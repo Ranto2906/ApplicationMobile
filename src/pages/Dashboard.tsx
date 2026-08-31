@@ -65,17 +65,7 @@ export default function Dashboard() {
           ))}
         </div>
 
-        {/* Logout */}
-        <IonButton
-          expand="block"
-          fill="outline"
-          color="danger"
-          onClick={handleLogout}
-          style={{ marginTop: 24, '--border-radius': '10px' }}
-        >
-          <IonIcon icon={logOut} slot="start" />
-          Déconnexion
-        </IonButton>
+       
       </IonContent>
     </IonPage>
   );

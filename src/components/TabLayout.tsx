@@ -4,7 +4,6 @@ import { Route, Redirect } from 'react-router-dom';
 import { home, people, list, settings } from 'ionicons/icons';
 
 const Dashboard = lazy(() => import('../pages/Dashboard'));
-const Utilisateurs = lazy(() => import('../pages/Utilisateurs'));
 const Journal = lazy(() => import('../pages/Journal'));
 const Settings = lazy(() => import('../pages/Settings'));
 
@@ -22,7 +21,6 @@ export default function TabLayout() {
       <IonRouterOutlet>
         <Suspense fallback={<TabLoader />}>
           <Route path="/tab/dashboard" component={Dashboard} exact />
-          <Route path="/tab/utilisateurs" component={Utilisateurs} exact />
           <Route path="/tab/journal" component={Journal} exact />
           <Route path="/tab/settings" component={Settings} exact />
         </Suspense>
@@ -36,11 +34,11 @@ export default function TabLayout() {
         </IonTabButton>
         <IonTabButton tab="utilisateurs" href="/tab/utilisateurs">
           <IonIcon icon={people} />
-          <IonLabel>Users</IonLabel>
+          <IonLabel>Signalement</IonLabel>
         </IonTabButton>
         <IonTabButton tab="journal" href="/tab/journal">
           <IonIcon icon={list} />
-          <IonLabel>Journal</IonLabel>
+          <IonLabel>Descente sur terrain</IonLabel>
         </IonTabButton>
         <IonTabButton tab="settings" href="/tab/settings">
           <IonIcon icon={settings} />

@@ -104,19 +104,7 @@ export default function Settings() {
         </IonCard>
 
         {/* Actions */}
-        <IonCard style={{ borderRadius: 12 }}>
-          <IonListHeader>
-            <IonLabel style={{ fontWeight: 600, fontSize: 14, color: '#374151' }}>Actions</IonLabel>
-          </IonListHeader>
-          <IonList>
-            <IonItem button onClick={() => setShowChangePwd(true)} lines="none">
-              <IonIcon icon={key} slot="start" color="warning" />
-              <IonLabel>
-                <h3 style={{ fontSize: 15 }}>Changer le mot de passe</h3>
-              </IonLabel>
-            </IonItem>
-          </IonList>
-        </IonCard>
+       
 
         {/* Logout */}
         <IonButton
