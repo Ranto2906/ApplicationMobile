@@ -1,22 +1,31 @@
-import { IonTabs, IonTabBar, IonTabButton, IonIcon, IonLabel, IonRouterOutlet } from '@ionic/react';
-import { Route, Redirect, useLocation } from 'react-router-dom';
+import { lazy, Suspense } from 'react';
+import { IonTabs, IonTabBar, IonTabButton, IonIcon, IonLabel, IonRouterOutlet, IonSpinner } from '@ionic/react';
+import { Route, Redirect } from 'react-router-dom';
 import { home, people, list, settings } from 'ionicons/icons';
 
-import Dashboard from '../pages/Dashboard';
-import Utilisateurs from '../pages/Utilisateurs';
-import Journal from '../pages/Journal';
-import Settings from '../pages/Settings';
+const Dashboard = lazy(() => import('../pages/Dashboard'));
+const Utilisateurs = lazy(() => import('../pages/Utilisateurs'));
+const Journal = lazy(() => import('../pages/Journal'));
+const Settings = lazy(() => import('../pages/Settings'));
+
+function TabLoader() {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%' }}>
+      <IonSpinner name="crescent" />
+    </div>
+  );
+}
 
 export default function TabLayout() {
-  const location = useLocation();
-
   return (
     <IonTabs>
       <IonRouterOutlet>
-        <Route path="/tab/dashboard" component={Dashboard} exact />
-        <Route path="/tab/utilisateurs" component={Utilisateurs} exact />
-        <Route path="/tab/journal" component={Journal} exact />
-        <Route path="/tab/settings" component={Settings} exact />
+        <Suspense fallback={<TabLoader />}>
+          <Route path="/tab/dashboard" component={Dashboard} exact />
+          <Route path="/tab/utilisateurs" component={Utilisateurs} exact />
+          <Route path="/tab/journal" component={Journal} exact />
+          <Route path="/tab/settings" component={Settings} exact />
+        </Suspense>
         <Route path="/tab" render={() => <Redirect to="/tab/dashboard" />} exact />
       </IonRouterOutlet>
 

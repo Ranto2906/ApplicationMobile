@@ -75,6 +75,8 @@ export const authApi = {
   logout: (rt: string | null) => api.post('/auth/logout', rt ? { refreshToken: rt } : null),
   refreshToken: (rt: string) => api.post<LoginResponse>('/auth/refresh', { refreshToken: rt }).then((r) => r.data),
   getMe: () => api.get<UtilisateurDTO>('/auth/me').then((r) => r.data),
+  changePassword: (request: { ancienMotDePasse: string; nouveauMotDePasse: string }) =>
+    api.put('/auth/change-password', request),
 };
 
 // ── Utilisateurs API ──

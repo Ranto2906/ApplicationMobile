@@ -1,23 +1,33 @@
-import { Redirect, Route } from 'react-router-dom';
-import { IonApp, IonRouterOutlet, setupIonicReact } from '@ionic/react';
+import { lazy, Suspense } from 'react';
+import { Redirect, Route, Switch } from 'react-router-dom';
+import { IonApp, IonRouterOutlet, IonSpinner, setupIonicReact } from '@ionic/react';
 import { IonReactRouter } from '@ionic/react-router';
 import { AuthProvider, useAuth } from './context/AuthContext';
 
-/* Pages */
-import Login from './pages/Login';
-import TabLayout from './components/TabLayout';
-import Dashboard from './pages/Dashboard';
-import Utilisateurs from './pages/Utilisateurs';
-import Journal from './pages/Journal';
-import Settings from './pages/Settings';
+const Login = lazy(() => import('./pages/Login'));
+const TabLayout = lazy(() => import('./components/TabLayout'));
 
 setupIonicReact();
 
-function ProtectedRoute({ children }: { children: React.ReactNode }) {
+function AuthGuard() {
   const { isAuthenticated, isLoading } = useAuth();
-  if (isLoading) return null;
-  if (!isAuthenticated) return <Redirect to="/login" />;
-  return <>{children}</>;
+
+  if (isLoading) {
+    return (
+      <div style={{
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        height: '100vh', background: '#f9fafb',
+      }}>
+        <IonSpinner name="crescent" color="primary" />
+      </div>
+    );
+  }
+
+  if (!isAuthenticated) {
+    return <Redirect to="/login" />;
+  }
+
+  return <TabLayout />;
 }
 
 export default function App() {
@@ -25,25 +35,17 @@ export default function App() {
     <IonApp>
       <AuthProvider>
         <IonReactRouter>
-          <IonRouterOutlet>
-            {/* Public */}
-            <Route path="/login" component={Login} exact />
-
-            {/* Protected */}
-            <Route path="/" render={() => (
-              <ProtectedRoute>
-                <TabLayout />
-              </ProtectedRoute>
-            )}>
-              <Route path="/" exact render={() => <Redirect to="/tab/dashboard" />} />
-              <Route path="/tab/dashboard" component={Dashboard} exact />
-              <Route path="/tab/utilisateurs" component={Utilisateurs} exact />
-              <Route path="/tab/journal" component={Journal} exact />
-              <Route path="/tab/settings" component={Settings} exact />
-            </Route>
-
-            <Route path="*" render={() => <Redirect to="/tab/dashboard" />} />
-          </IonRouterOutlet>
+          <Suspense fallback={
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh' }}>
+              <IonSpinner name="crescent" />
+            </div>
+          }>
+            <Switch>
+              <Route path="/login" component={Login} exact />
+              <Route path="/tab" component={AuthGuard} />
+              <Route path="*" render={() => <Redirect to="/tab/dashboard" />} />
+            </Switch>
+          </Suspense>
         </IonReactRouter>
       </AuthProvider>
     </IonApp>

@@ -12,4 +12,25 @@ export default defineConfig({
       },
     },
   },
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          // Séparer Ionic du bundle principal
+          'ionic': [
+            '@ionic/react',
+            '@ionic/react-router',
+            'ionicons',
+          ],
+          // Séparer React/ReactDOM
+          'vendor': [
+            'react',
+            'react-dom',
+            'react-router',
+            'react-router-dom',
+          ],
+        },
+      },
+    },
+  },
 })
