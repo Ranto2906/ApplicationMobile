@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { config } from '../config';
 import type {
   LoginRequest, LoginResponse, TokenRefreshRequest,
   UtilisateurDTO, CreateUtilisateurRequest, UpdateUtilisateurRequest,
@@ -7,10 +8,8 @@ import type {
   ModuleRBAC, EntiteRBAC, ActionRBAC,
 } from '../types';
 
-const API_BASE = '/api';
-
 const api = axios.create({
-  baseURL: API_BASE,
+  baseURL: config.getApiBase(),
   headers: { 'Content-Type': 'application/json' },
 });
 
@@ -57,7 +56,7 @@ api.interceptors.response.use(
       const rt = getRefreshToken();
       if (!rt) { clearTokens(); window.location.href = '/login'; return Promise.reject(error); }
       try {
-        const { data } = await axios.post<LoginResponse>(`${API_BASE}/auth/refresh`, { refreshToken: rt } as TokenRefreshRequest);
+        const { data } = await axios.post<LoginResponse>(`${config.getApiBase()}/auth/refresh`, { refreshToken: rt } as TokenRefreshRequest);
         setTokens(data.accessToken, data.refreshToken);
         localStorage.setItem('user', JSON.stringify(data.utilisateur));
         processQueue(null);

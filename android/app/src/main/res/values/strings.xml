@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">SEIMAD</string>
+    <string name="title_activity_main">SEIMAD</string>
+    <string name="package_name">mg.seimad.patrimoine</string>
+    <string name="custom_url_scheme">mg.seimad.patrimoine</string>
+</resources>
