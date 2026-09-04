@@ -12,7 +12,7 @@ const isNative = !!(window as any).Capacitor?.isNativePlatform;
 
 // Pour un test sur téléphone : changez cette valeur par votre IP locale
 // Trouvez-la avec : ipconfig (Windows) ou ifconfig (Mac/Linux)
-const LOCAL_IP = '192.168.137.247'; // ← Votre IP locale (ipconfig)
+const LOCAL_IP = '192.168.137.139'; // ← Votre IP locale (ipconfig)
 
 export const config = {
   /** URL de base du backend */
