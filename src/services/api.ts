@@ -13,6 +13,20 @@ const api = axios.create({
   headers: { 'Content-Type': 'application/json' },
 });
 
+function depuisDébut(): string {
+  return `${(performance.now() - (window as any).__SEIMAD_DÉMARAGE__ || 0).toFixed(0)}ms`;
+}
+function log(...args: any[]) {
+  console.log(`[SEIMAD:api:${depuisDébut()}]`, ...args);
+}
+function logErr(err: unknown, label = 'erreur') {
+  if (err && typeof err === 'object' && 'stack' in err && typeof (err as any).message === 'string') {
+    console.error(`[SEIMAD:api:${depuisDébut()}]`, label, (err as any).message, (err as any).stack);
+  } else {
+    console.error(`[SEIMAD:api:${depuisDébut()}]`, label, err);
+  }
+}
+
 function getAccessToken(): string | null {
   return localStorage.getItem('accessToken');
 }
@@ -32,6 +46,7 @@ function clearTokens() {
 api.interceptors.request.use((config) => {
   const token = getAccessToken();
   if (token) config.headers.Authorization = `Bearer ${token}`;
+  log('request →', config.method?.toUpperCase(), config.url, '| Authorization:', token ? 'présent' : 'absent');
   return config;
 });
 
@@ -47,22 +62,50 @@ api.interceptors.response.use(
   (r) => r,
   async (error) => {
     const orig = error.config;
+    const statut = (error as any)?.response?.status;
+    const estReseau = !(error as { response?: unknown })?.response;
     if (error.response?.status === 401 && !orig._retry) {
+      log('response → 401 sur', orig.url, '(retry:', orig._retry, ')');
       if (isRefreshing) {
+        log('response → refresh déjà en cours → mise en file');
         return new Promise((resolve, reject) => { failedQueue.push({ resolve, reject }); }).then(() => api(orig));
       }
       orig._retry = true;
       isRefreshing = true;
+      log('response → refresh en cours…');
       const rt = getRefreshToken();
-      if (!rt) { clearTokens(); window.location.href = '/login'; return Promise.reject(error); }
+      if (!rt) {
+        log('response → pas de refreshToken → déconnexion + redirect /login');
+        clearTokens();
+        window.location.href = '/login';
+        return Promise.reject(error);
+      }
       try {
+        const début = performance.now();
         const { data } = await axios.post<LoginResponse>(`${config.getApiBase()}/auth/refresh`, { refreshToken: rt } as TokenRefreshRequest);
+        log('response → refresh OK en', `${(performance.now() - début).toFixed(0)}ms`);
         setTokens(data.accessToken, data.refreshToken);
         localStorage.setItem('user', JSON.stringify(data.utilisateur));
         processQueue(null);
         return api(orig);
-      } catch (e) { clearTokens(); window.location.href = '/login'; processQueue(e); return Promise.reject(e); }
+      } catch (e) {
+        if (estReseau) {
+          log('response → refresh injoignable (réseau hors-ligne) → on garde la session');
+          processQueue(e);
+          return Promise.reject(e);
+        }
+        logErr(e, 'response → refresh échoué → déconnexion');
+        clearTokens();
+        window.location.href = '/login';
+        processQueue(e);
+        return Promise.reject(e);
+      }
       finally { isRefreshing = false; }
+    }
+    if (estReseau) {
+      log('response → erreur réseau (pas de réponse HTTP) sur', orig?.url, '| statut:', statut);
+    } else {
+      log('response → erreur HTTP', statut, 'sur', orig?.url);
     }
     return Promise.reject(error);
   }

@@ -1,0 +1,22 @@
+sql-wasm.wasm — ORIGINE ET VERSION (NE PAS MODIFIER À LA LÉGÈRE)
+═════════════════════════════════════════════════════════════════
+
+Ce fichier provient de sql.js v1.12.0 (dist/sql-wasm.wasm) et est servi à
+jeep-sqlite (web SQLite via @capacitor-community/sqlite).
+
+⚠️  IMPORTANT — compatibilité glue/wasm :
+jeep-sqlite embarque sa PROPRE copie du glue emscripten de sql.js dans son
+bundle. Ce glue et le .wasm servis doivent être de la MÊME génération.
+
+- sql.js ≥ 1.13 (ex. 1.14.x installée automatiquement par jeep-sqlite via
+  « ^1.11.0 ») produit un .wasm dont les imports ne correspondent PAS au
+  glue de jeep-sqlite 2.8.x :
+      LinkError: WebAssembly.instantiate(): Import #34 "a" "I":
+      function import requires a callable
+  → la base web ne peut jamais s'ouvrir (échec « Connection … does not
+    exist » côté @capacitor-community/sqlite).
+- sql.js 1.12.0 fonctionne (testé avec jeep-sqlite 2.8.0).
+
+Pour re-copier ce fichier (si le node_modules est régénéré) :
+    npm install            # l'override sql.js=1.12.0 est dans package.json
+    copy node_modules/sql.js/dist/sql-wasm.wasm → public/assets/sql-wasm.wasm

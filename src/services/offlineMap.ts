@@ -8,6 +8,7 @@
 //    zone visible (plusieurs niveaux de zoom) → carte consultable
 //    hors-ligne.
 // ══════════════════════════════════════════════════════════════
+import { Capacitor } from '@capacitor/core';
 import L from 'leaflet';
 import { db } from './db';
 
@@ -23,14 +24,34 @@ const TUILE_ABSENTE =
  * - online + non cachée  → téléchargée puis sauvegardée
  * - hors-ligne + cachée  → servie depuis SQLite
  * - hors-ligne + absente → tuile grise
+ *
+ * Note : si la base SQLite web est indisponible (<jeep-sqlite> non défini),
+ * le cache est ignoré et la couche agit comme une tuile OSM classique (en ligne)
+ * ou une tuile grise (hors-ligne).
  */
 export class OfflineTileLayer extends L.TileLayer {
   /** true quand on force le mode hors-ligne (désactive le téléchargement réseau). */
   forceOffline: boolean;
 
+  /** Vrai quand la base SQLite locale est réellement utilisable. */
+  private sqliteOk: boolean;
+
   constructor(urlTemplate: string, options?: L.TileLayerOptions) {
     super(urlTemplate, { maxZoom: 19, ...options });
     this.forceOffline = false;
+    this.sqliteOk = this.estSqliteDisponible();
+    if (!this.sqliteOk) {
+      console.warn(
+        '[SEIMAD:offlineMap] cache SQLite ignoré — web SQLite indisponible.'
+      );
+    }
+  }
+
+  private estSqliteDisponible(): boolean {
+    if (typeof Capacitor !== 'undefined' && Capacitor.getPlatform() !== 'web') {
+      return true;
+    }
+    return !!(window as any).__SEIMAD_WEB_SQLITE_AVAILABLE__;
   }
 
   setForceOffline(v: boolean) {
@@ -39,17 +60,67 @@ export class OfflineTileLayer extends L.TileLayer {
     this.redraw();
   }
 
+  /**
+   * URL de tuile garantie valide. Leaflet construit le « z » de l'URL avec
+   * `_getZoomForUrl()` → `this._tileZoom`, qui vaut `undefined` quand la
+   * couche est retirée (démontage StrictMode) ou avant la première vue :
+   * l'URL deviendrait « NaN/…/….png » (OSM répond 400). On régénère alors
+   * l'URL depuis les coordonnées de la tuile ; sinon tuile grise locale.
+   */
+  override getTileUrl(coords: L.Coords): string {
+    const tileZoom = (this as any)._tileZoom as unknown;
+    if (Number.isFinite(tileZoom as number)) {
+      return super.getTileUrl(coords);
+    }
+    const z = coords.z;
+    const x = coords.x;
+    const y = coords.y;
+    if (!Number.isFinite(z) || !Number.isFinite(x) || !Number.isFinite(y) || z < 0 || x < 0 || y < 0) {
+      return TUILE_ABSENTE;
+    }
+    return OSM_TILE_URL.replace('{z}', String(z)).replace('{x}', String(x)).replace('{y}', String(y));
+  }
+
   override createTile(coords: L.Coords, done: L.DoneCallback): HTMLElement {
     const tile = document.createElement('img');
     const z = coords.z;
     const x = coords.x;
     const y = coords.y;
-    const key = this._tileCoordsToKey ? `${z}/${x}/${y}` : `${z}/${x}/${y}`;
+    const terminer = (el: HTMLElement) => done(null!, el);
 
-    // Sécurité : nombres négatifs (hors monde) → tuile transparente.
-    if (x < 0 || y < 0) {
+    // Sécurité : coordonnées invalides (NaN/Infini — ex. carte encore en cours
+    // d'initialisation ou état corrompu) ou hors monde → tuile grise, jamais de
+    // requête réseau (OSM répondrait 400 à « NaN/20708/18134.png »).
+    if (!Number.isFinite(z) || !Number.isFinite(x) || !Number.isFinite(y) || z < 0 || x < 0 || y < 0) {
       tile.src = TUILE_ABSENTE;
-      done(null, tile);
+      terminer(tile);
+      return tile;
+    }
+
+    if (!this.sqliteOk) {
+      // Pas de cache local possible : tuile OSM en ligne ou tuile grise.
+      if (this.forceOffline || !navigator.onLine) {
+        tile.src = TUILE_ABSENTE;
+        terminer(tile);
+        return tile;
+      }
+      const url = this.getTileUrl(coords as any);
+      if (url === TUILE_ABSENTE) {
+        tile.src = TUILE_ABSENTE;
+        terminer(tile);
+        return tile;
+      }
+      const img = new Image();
+      img.crossOrigin = 'anonymous';
+      img.onload = () => {
+        tile.src = img.src;
+        terminer(tile);
+      };
+      img.onerror = () => {
+        tile.src = TUILE_ABSENTE;
+        terminer(tile);
+      };
+      img.src = url;
       return tile;
     }
 
@@ -57,21 +128,27 @@ export class OfflineTileLayer extends L.TileLayer {
       .then((dataUrl) => {
         if (dataUrl) {
           tile.src = dataUrl;
-          done(null, tile);
+          terminer(tile);
           return;
         }
         if (this.forceOffline || !navigator.onLine) {
           tile.src = TUILE_ABSENTE;
-          done(null, tile);
+          terminer(tile);
           return;
         }
         // Tuile absente + en ligne → téléchargement puis mise en cache.
         const url = this.getTileUrl(coords as any);
+        if (url === TUILE_ABSENTE) {
+          // Zoom interne indisponible → tuile grise, aucune requête réseau.
+          tile.src = TUILE_ABSENTE;
+          terminer(tile);
+          return;
+        }
         const img = new Image();
         img.crossOrigin = 'anonymous';
         img.onload = () => {
           tile.src = img.src;
-          done(null, tile);
+          terminer(tile);
           // Sauvegarde silencieuse (best effort) dans SQLite.
           fetch(url, { mode: 'cors' })
             .then((r) => (r.ok ? r.blob() : null))
@@ -85,19 +162,20 @@ export class OfflineTileLayer extends L.TileLayer {
         };
         img.onerror = () => {
           tile.src = TUILE_ABSENTE;
-          done(null, tile);
+          terminer(tile);
         };
         img.src = url;
-        void key;
       })
       .catch(() => {
-        // Erreur SQLite (pas encore initialisée…) → comportement réseau normal.
-        if (this.forceOffline || !navigator.onLine) {
+        // Erreur SQLite (pas encore initialisée, couche retirée…) → repli
+        // réseau, mais jamais avec un zoom invalide (NaN).
+        const url = this.getTileUrl(coords as any);
+        if (this.forceOffline || !navigator.onLine || url === TUILE_ABSENTE) {
           tile.src = TUILE_ABSENTE;
         } else {
-          tile.src = this.getTileUrl(coords as any);
+          tile.src = url;
         }
-        done(null, tile);
+        terminer(tile);
       });
 
     return tile;
@@ -139,7 +217,6 @@ export async function telechargerZone(
   const minZoom = Math.max(8, opts.minZoom);
   const maxZoom = Math.min(19, opts.maxZoom);
 
-  // Bornes géographiques de la vue.
   const nord = bounds.getNorth();
   const sud = bounds.getSouth();
   const est = bounds.getEast();

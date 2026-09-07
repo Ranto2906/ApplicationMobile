@@ -1,11 +1,18 @@
 import { IonPage, IonContent, IonHeader, IonToolbar, IonTitle, IonCard, IonCardContent, IonLabel, IonButton, IonIcon } from '@ionic/react';
-import { people, list, shieldCheckmark, logOut } from 'ionicons/icons';
+import { list, shieldCheckmark, logOut, megaphone } from 'ionicons/icons';
 import { useAuth } from '../context/AuthContext';
 import { useHistory } from 'react-router-dom';
+import { useEffect, useState } from 'react';
+import { db } from '../services/db';
 
 export default function Dashboard() {
   const { user, logout } = useAuth();
   const history = useHistory();
+  const [pending, setPending] = useState(0);
+
+  useEffect(() => {
+    db.nombreOperationsPending().then(setPending).catch(() => undefined);
+  }, []);
 
   const handleLogout = async () => {
     await logout();
@@ -13,7 +20,7 @@ export default function Dashboard() {
   };
 
   const cards = [
-    { icon: people, label: 'Utilisateurs', color: '#1a56db', tab: '/tab/utilisateurs' },
+    { icon: megaphone, label: 'Signalements terrain', color: '#c53030', tab: '/tab/signalements', badge: pending > 0 ? `${pending} en attente` : '' },
     { icon: list, label: 'Journal', color: '#10b981', tab: '/tab/journal' },
     { icon: shieldCheckmark, label: 'Rôles & Permissions', color: '#8b5cf6', tab: '/tab/settings' },
   ];
@@ -60,6 +67,14 @@ export default function Dashboard() {
                   <IonIcon icon={card.icon} style={{ fontSize: 24, color: card.color }} />
                 </div>
                 <IonLabel style={{ fontSize: 13, fontWeight: 600 }}>{card.label}</IonLabel>
+                {'badge' in card && card.badge ? (
+                  <div style={{
+                    marginTop: 6, fontSize: 9.5, fontWeight: 700, background: `${card.color}20`,
+                    color: card.color, borderRadius: 20, padding: '2px 8px', display: 'inline-block',
+                  }}>
+                    {card.badge}
+                  </div>
+                ) : null}
               </IonCardContent>
             </IonCard>
           ))}

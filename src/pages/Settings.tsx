@@ -1,23 +1,85 @@
-import { useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import {
   IonPage, IonContent, IonHeader, IonToolbar, IonTitle,
   IonCard, IonCardContent, IonItem, IonLabel, IonList,
   IonListHeader, IonNote, IonButton, IonIcon, IonAlert,
-  IonToast, IonInput, IonAvatar, IonBadge,
+  IonToast, IonInput, IonAvatar, IonBadge, IonSpinner,
 } from '@ionic/react';
-import { person, shieldCheckmark, logOut, key, refresh } from 'ionicons/icons';
+import { person, shieldCheckmark, logOut, key, refresh, syncOutline, cloudOfflineOutline, serverOutline } from 'ionicons/icons';
 import { useAuth } from '../context/AuthContext';
 import { useHistory } from 'react-router-dom';
 import { authApi } from '../services/api';
+import { db } from '../services/db';
+import localApi from '../services/localApi';
+import { synchroniserTout, type ResultatSync } from '../services/syncService';
+import { useOnline } from '../hooks/useOnline';
 
 export default function Settings() {
   const { user, logout } = useAuth();
   const history = useHistory();
+  const online = useOnline();
   const [showChangePwd, setShowChangePwd] = useState(false);
   const [oldPwd, setOldPwd] = useState('');
   const [newPwd, setNewPwd] = useState('');
   const [toastMsg, setToastMsg] = useState('');
   const [toastColor, setToastColor] = useState('success');
+
+  // ── Synchronisation (bouton) ──
+  const [syncing, setSyncing] = useState(false);
+  const [lastSync, setLastSync] = useState<string | null>(null);
+  const [tables, setTables] = useState<Array<{ name: string; rowCount: number }>>([]);
+  const [syncResult, setSyncResult] = useState<ResultatSync | null>(null);
+
+  const rechargerStatsLocales = useCallback(async () => {
+    try {
+      const début = performance.now();
+      const [t, d] = await Promise.all([
+        localApi.get<Array<{ name: string; rowCount: number }>>('/sqlite/tables'),
+        db.getMeta('derniere_synchro'),
+      ]);
+      console.log(`[SEIMAD:Settings] rechargerStatsLocales → fin en ${Math.round(performance.now() - début)}ms`);
+      setTables(Array.isArray(t) ? t : []);
+      setLastSync(d);
+    } catch (e: any) {
+      console.warn(`[SEIMAD:Settings] rechargerStatsLocales → échec`, e?.message || e);
+    }
+  }, []);
+
+  useEffect(() => { rechargerStatsLocales(); }, [rechargerStatsLocales]);
+
+  const synchroniser = async () => {
+    if (syncing || !online) return;
+    setSyncing(true);
+    console.log(`[SEIMAD:Settings] synchroniser → démarrage (depuis démarrage: ${Math.round(performance.now() - (window as any).__SEIMAD_DÉMARAGE__ || 0)}ms)`);
+    try {
+      const début = performance.now();
+      const res = await synchroniserTout();
+      console.log(`[SEIMAD:Settings] synchroniser → fin en ${Math.round(performance.now() - début)}ms`, res);
+      setSyncResult(res);
+      setToastMsg(
+        res.total === 0
+          ? '✔ Rien à envoyer — la base locale est à jour'
+          : `✔ Synchro : ${res.reussis}/${res.total} envoyé(s)${res.echecs ? ` (${res.echecs} échec(s))` : ''}`
+      );
+      setToastColor(res.echecs > 0 ? 'warning' : 'success');
+      await rechargerStatsLocales();
+    } catch (err: any) {
+      console.error(`[SEIMAD:Settings] synchroniser → échec`, err?.message || err, err?.stack || '');
+      setToastMsg('Synchronisation impossible — vérifiez la connexion');
+      setToastColor('danger');
+    } finally {
+      setSyncing(false);
+    }
+  };
+
+  const nomTableCourt = (n: string) => ({
+    pending_operations: 'À synchroniser (file)',
+    map_tiles: 'Tuiles carte',
+    referentiels_cache: 'Référentiels',
+    geometrie_locale: 'Géométries (GeoJSON)',
+  }[n] ?? n);
+
+  const nbLignes = (n: string) => tables.find((t) => t.name === n)?.rowCount ?? 0;
 
   const handleLogout = async () => {
     await logout();
@@ -59,8 +121,8 @@ export default function Settings() {
           <h2 style={{ margin: 0, fontSize: 20, fontWeight: 700 }}>{user?.nomComplet || user?.nomUtilisateur}</h2>
           <p style={{ margin: '4px 0', color: '#6b7280', fontSize: 14 }}>{user?.email || '—'}</p>
           <div style={{ display: 'flex', gap: 6, justifyContent: 'center', marginTop: 8, flexWrap: 'wrap' }}>
-            {user?.roles?.map((r) => (
-              <IonBadge key={r.idRole} color="primary" style={{ fontSize: 11 }}>{r.nomRole}</IonBadge>
+            {user?.roles?.map((r, i) => (
+              <IonBadge key={r.idRole ?? `role-${r.nomRole}-${i}`} color="primary" style={{ fontSize: 11 }}>{r.nomRole}</IonBadge>
             ))}
           </div>
         </div>
@@ -103,8 +165,68 @@ export default function Settings() {
           </IonList>
         </IonCard>
 
-        {/* Actions */}
-       
+        {/* Synchronisation */}
+        <IonCard style={{ borderRadius: 12 }}>
+          <IonListHeader>
+            <IonLabel style={{ fontWeight: 600, fontSize: 14, color: '#374151' }}>🔄 Synchronisation</IonLabel>
+          </IonListHeader>
+          <IonCardContent>
+            {!online && (
+              <div style={{ background: '#fff8e1', border: '1px solid #f0e0a8', color: '#8a6d1d', borderRadius: 8, padding: '8px 10px', fontSize: 12, marginBottom: 10 }}>
+                <IonIcon icon={cloudOfflineOutline} style={{ verticalAlign: '-2px' }} /> Hors-ligne — la synchro se fera dès le retour du réseau.
+              </div>
+            )}
+            <div style={{ fontSize: 12.5, color: '#374151', lineHeight: 1.6, marginBottom: 12 }}>
+              <div style={{ fontSize: 11.5, color: '#6b7280', marginBottom: 6 }}>
+                PUSH uniquement : les signalements créés sur l'appareil sont envoyés vers le serveur. Le mobile ne télécharge pas de données.
+              </div>
+              {nbLignes('pending_operations') > 0 ? (
+                <div style={{ color: '#b7791f' }}>
+                  📤 {nbLignes('pending_operations')} signalement(s) local(aux) à envoyer au serveur
+                </div>
+              ) : (
+                <div style={{ color: '#059669' }}>
+                  ✔ Aucune donnée locale en attente
+                </div>
+              )}
+              {lastSync && (
+                <div style={{ color: '#6b7280', fontSize: 11.5 }}>
+                  Dernière synchro : {new Date(lastSync).toLocaleString('fr-FR')}
+                </div>
+              )}
+            </div>
+
+            <IonButton
+              expand="block"
+              disabled={syncing || !online}
+              onClick={synchroniser}
+              style={{ '--border-radius': 10, '--background': '#1a56db' }}
+            >
+              {syncing ? <IonSpinner name="crescent" /> : <IonIcon icon={syncOutline} slot="start" />}
+              {syncing ? 'Synchronisation en cours…' : 'Synchroniser maintenant'}
+            </IonButton>
+
+            {syncResult && syncResult.total > 0 && (
+              <div style={{ marginTop: 10, fontSize: 12, background: '#f0f7ff', borderRadius: 8, padding: '8px 10px', color: '#1e3a5f', lineHeight: 1.7 }}>
+                <div>📤 <b>Envoyé</b> : {syncResult.reussis}/{syncResult.total}{syncResult.echecs ? ` (${syncResult.echecs} échec(s) — resteront dans la file)` : ''}</div>
+              </div>
+            )}
+
+            {tables.length > 0 && (
+              <div style={{ marginTop: 12, borderTop: '1px solid #eef2f7', paddingTop: 8 }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 6 }}>
+                  <IonIcon icon={serverOutline} style={{ verticalAlign: '-2px' }} /> Base locale — {tables.reduce((s, t) => s + t.rowCount, 0)} lignes
+                </div>
+                {tables.filter((t) => t.rowCount > 0).map((t) => (
+                  <div key={t.name} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: '#4b5563', padding: '2px 0' }}>
+                    <span>{nomTableCourt(t.name)}</span>
+                    <b>{t.rowCount}</b>
+                  </div>
+                ))}
+              </div>
+            )}
+          </IonCardContent>
+        </IonCard>
 
         {/* Logout */}
         <IonButton

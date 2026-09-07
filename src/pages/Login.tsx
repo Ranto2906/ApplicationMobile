@@ -1,7 +1,8 @@
 import { useState } from 'react';
-import { IonPage, IonContent, IonItem, IonLabel, IonInput, IonButton, IonText, IonImg, IonSpinner } from '@ionic/react';
+import { IonPage, IonContent, IonItem, IonLabel, IonInput, IonButton, IonText, IonSpinner } from '@ionic/react';
 import { useHistory } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { useOnline } from '../hooks/useOnline';
 import { config } from '../config';
 
 export default function Login() {
@@ -9,8 +10,9 @@ export default function Login() {
   const [motDePasse, setMotDePasse] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
-  const { login } = useAuth();
+  const { login, loginHorsLigne } = useAuth();
   const history = useHistory();
+  const online = useOnline();
 
   const [debug, setDebug] = useState('');
 
@@ -20,15 +22,25 @@ export default function Login() {
     setLoading(true);
     const url = `${config.getApiBase()}/auth/login`;
     setDebug(`→ ${url}`);
+    console.log(`[SEIMAD:Login] submit → ${url} (depuis démarrage: ${Math.round(performance.now() - (window as any).__SEIMAD_DÉMARAGE__ || 0)}ms)`);
     try {
-      await login({ nomUtilisateur, motDePasse });
+      if (!online) {
+        // Hors-ligne : vérification locale (session enregistrée lors d'une
+        // précédente connexion en ligne).
+        setDebug('→ Mode hors-ligne : vérification locale des identifiants');
+        await loginHorsLigne({ nomUtilisateur, motDePasse });
+      } else {
+        await login({ nomUtilisateur, motDePasse });
+      }
       history.replace('/tab/dashboard');
     } catch (err: any) {
       const details = err?.response?.status
         ? `HTTP ${err?.response?.status}: ${JSON.stringify(err?.response?.data).slice(0,200)}`
         : `${err?.code || 'UNKNOWN'}: ${err?.message || 'no message'}`;
       setDebug(`→ ${url}\n${details}`);
-      if (err?.code === 'ERR_NETWORK' || err?.message?.includes('Network Error')) {
+      if (err?.code === 'OFFLINE_AUTH') {
+        setError(err?.message || 'Connexion hors-ligne impossible');
+      } else if (err?.code === 'ERR_NETWORK' || err?.message?.includes('Network Error')) {
         setError('Impossible de contacter le serveur. Vérifiez votre connexion WiFi et l\'adresse du serveur.');
       } else if (err?.response?.status === 401) {
         setError('Identifiant ou mot de passe incorrect');
@@ -110,6 +122,15 @@ export default function Login() {
               {loading ? <IonSpinner name="crescent" /> : 'Se connecter'}
             </IonButton>
 
+            {!online && (
+              <div style={{
+                marginTop: 12, padding: '8px 10px', borderRadius: 8, fontSize: 12,
+                background: '#fff8e1', border: '1px solid #f0e0a8', color: '#8a6d1d', lineHeight: 1.4,
+              }}>
+                📴 <b>Mode hors-ligne</b> — la connexion sera vérifiée localement
+                (compte déjà connecté sur cet appareil).
+              </div>
+            )}
             <IonText color="medium" style={{ display: 'block', textAlign: 'center', marginTop: 16, fontSize: 12 }}>
               <p>Compte démo : admin / admin</p>
             </IonText>

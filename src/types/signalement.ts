@@ -47,11 +47,41 @@ export interface SignalementDTO {
 
   idDossier?: number;
   numeroDossier?: string;
-  idNotification?: string;
-  idAvertissement?: string;
+
+  /** Assignations signalement <-> notification / avertissement (depuis le backend). */
+  assignations?: AssignationDTO[];
 
   idUtilisateurCreation?: number;
   nomUtilisateurCreation?: string;
+}
+
+export interface AssignationDTO {
+  idAssignation?: number;
+  idSignalement?: string;
+  referenceSignalement?: string;
+  typeCible?: 'notification' | 'avertissement';
+  idNotification?: string;
+  dateNotification?: string;
+  numeroTitreNotification?: string;
+  idAvertissement?: string;
+  dateAvertissement?: string;
+  numeroTitreAvertissement?: string;
+  dateAssignation?: string;
+  idUtilisateur?: number;
+  nomUtilisateur?: string;
+}
+
+/**
+ * Géométrie du constat (ex. point GPS) — envoyée en GeoJSON texte.
+ * Stockée côté serveur dans la table `geometrie` (entite_type='signalement').
+ * Ex. geojson : {"type":"Point","coordinates":[47.507,-18.879]} (ordre GeoJSON lng,lat).
+ */
+export interface GeometrieRequest {
+  /** 'Point' ou 'Polygon'. */
+  typeGeometrie?: string;
+  geojson?: string;
+  precisionM?: number;
+  source?: string;
 }
 
 export interface SignalementRequest {
@@ -64,8 +94,9 @@ export interface SignalementRequest {
   idTitreFoncier?: string;
   idParcelle?: string;
   idDossier?: number;
-  idNotification?: string;
-  idAvertissement?: string;
+  /** Géométrie GPS du constat (optionnelle) — GeoJSON texte. */
+  geometrie?: GeometrieRequest;
+  /** NB : le rattachement notification/avertissement passe par l'assignation (endpoint dédié). */
 }
 
 export interface VilleSimple {
