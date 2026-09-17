@@ -1,15 +1,19 @@
 import { useState } from 'react';
-import { IonPage, IonContent, IonItem, IonLabel, IonInput, IonButton, IonText, IonSpinner } from '@ionic/react';
+import { IonPage, IonContent, IonItem, IonInput, IonButton, IonText, IonSpinner, IonIcon } from '@ionic/react';
+import { eye, eyeOff, personOutline, lockClosedOutline, locationOutline } from 'ionicons/icons';
 import { useHistory } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useOnline } from '../hooks/useOnline';
 import { config } from '../config';
+import logoSeimad from '../assets/logoseimad.jpg';
+import './Login.css';
 
 export default function Login() {
   const [nomUtilisateur, setNomUtilisateur] = useState('');
   const [motDePasse, setMotDePasse] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
   const { login, loginHorsLigne } = useAuth();
   const history = useHistory();
   const online = useOnline();
@@ -35,7 +39,7 @@ export default function Login() {
       history.replace('/tab/dashboard');
     } catch (err: any) {
       const details = err?.response?.status
-        ? `HTTP ${err?.response?.status}: ${JSON.stringify(err?.response?.data).slice(0,200)}`
+        ? `HTTP ${err?.response?.status}: ${JSON.stringify(err?.response?.data).slice(0, 200)}`
         : `${err?.code || 'UNKNOWN'}: ${err?.message || 'no message'}`;
       setDebug(`→ ${url}\n${details}`);
       if (err?.code === 'OFFLINE_AUTH') {
@@ -58,94 +62,112 @@ export default function Login() {
 
   return (
     <IonPage>
-      <IonContent className="ion-padding" style={{ '--background': 'linear-gradient(135deg, #1a56db 0%, #1e3a5f 100%)' }}>
-        <div style={{
-          display: 'flex', flexDirection: 'column', alignItems: 'center',
-          justifyContent: 'center', minHeight: '100vh', padding: '20px',
-        }}>
-          {/* Logo */}
-          <div style={{ textAlign: 'center', marginBottom: 40 }}>
-            <div style={{ fontSize: 48 }}>🏛️</div>
-            <h1 style={{ color: 'white', fontSize: 28, fontWeight: 'bold', margin: '8px 0 4px' }}>
-              SEIMAD
-            </h1>
-            <p style={{ color: 'rgba(255,255,255,0.7)', fontSize: 14 }}>
-              Patrimoine Foncier
-            </p>
-          </div>
+      <IonContent className="login-content">
+        <header className="login-topbar">
+          <img className="login-topbar-logo" src={logoSeimad} alt="" aria-hidden="true" />
+          <span className="login-topbar-name">SEIMAD</span>
+        </header>
 
-          {/* Formulaire */}
-          <div style={{
-            background: 'white', borderRadius: 16, padding: 24,
-            width: '100%', maxWidth: 400, boxShadow: '0 8px 32px rgba(0,0,0,0.2)',
-          }}>
+        <main className="login-shell">
+          <section className="login-card" aria-labelledby="login-title">
+            <h1 id="login-title" className="login-card-heading">Se connecter</h1>
+            <p className="login-card-sub">
+              Accédez à votre espace de gestion<br />du patrimoine foncier
+            </p>
+
             {error && (
-              <div style={{
-                background: '#fef2f2', color: '#dc2626', padding: 12,
-                borderRadius: 8, fontSize: 13, marginBottom: 16, border: '1px solid #fecaca',
-              }}>
+              <div className="login-error" role="alert">
                 {error}
               </div>
             )}
 
-            <IonItem lines="none" style={{ '--background': 'transparent', marginBottom: 12 }}>
-              <IonLabel position="stacked" style={{ fontSize: 13, color: '#6b7280' }}>
-                Nom d'utilisateur
-              </IonLabel>
-              <IonInput
-                value={nomUtilisateur}
-                onIonInput={(e) => setNomUtilisateur(e.detail.value || '')}
-                placeholder="admin"
-                autocomplete="username"
-              />
-            </IonItem>
-
-            <IonItem lines="none" style={{ '--background': 'transparent', marginBottom: 20 }}>
-              <IonLabel position="stacked" style={{ fontSize: 13, color: '#6b7280' }}>
-                Mot de passe
-              </IonLabel>
-              <IonInput
-                type="password"
-                value={motDePasse}
-                onIonInput={(e) => setMotDePasse(e.detail.value || '')}
-                placeholder="••••••••"
-                autocomplete="current-password"
-              />
-            </IonItem>
-
-            <IonButton
-              expand="block"
-              onClick={handleSubmit}
-              disabled={loading || !nomUtilisateur || !motDePasse}
-              style={{ '--border-radius': '10px', height: 48, fontWeight: 600 }}
+            <form
+              className="login-form"
+              onSubmit={(event) => { event.preventDefault(); void handleSubmit(); }}
             >
-              {loading ? <IonSpinner name="crescent" /> : 'Se connecter'}
-            </IonButton>
+              <IonItem lines="none" className="login-field">
+                <IonIcon icon={personOutline} slot="start" aria-hidden="true" />
+                <IonInput
+                  value={nomUtilisateur}
+                  onIonInput={(e) => setNomUtilisateur(e.detail.value || '')}
+                  placeholder="Nom d'utilisateur"
+                  autocomplete="username"
+                  inputmode="email"
+                  aria-label="Nom d'utilisateur"
+                />
+              </IonItem>
+
+              <IonItem lines="none" className="login-field">
+                <IonIcon icon={lockClosedOutline} slot="start" aria-hidden="true" />
+                <IonInput
+                  value={motDePasse}
+                  onIonInput={(e) => setMotDePasse(e.detail.value || '')}
+                  type={showPassword ? 'text' : 'password'}
+                  placeholder="Mot de passe"
+                  autocomplete="current-password"
+                  aria-label="Mot de passe"
+                />
+                <button
+                  type="button"
+                  className="password-toggle"
+                  aria-label={showPassword ? 'Masquer le mot de passe' : 'Afficher le mot de passe'}
+                  onClick={() => setShowPassword((visible) => !visible)}
+                >
+                  <IonIcon icon={showPassword ? eyeOff : eye} aria-hidden="true" />
+                </button>
+              </IonItem>
+
+              <IonButton
+                type="submit"
+                expand="block"
+                disabled={loading || !nomUtilisateur || !motDePasse}
+                className="login-submit"
+              >
+                {loading ? <IonSpinner name="crescent" /> : 'Se connecter'}
+              </IonButton>
+            </form>
+
+            <hr className="login-divider" />
+
+            <p className="login-section-label">ACCÈS TERRAIN</p>
 
             {!online && (
-              <div style={{
-                marginTop: 12, padding: '8px 10px', borderRadius: 8, fontSize: 12,
-                background: '#fff8e1', border: '1px solid #f0e0a8', color: '#8a6d1d', lineHeight: 1.4,
-              }}>
-                📴 <b>Mode hors-ligne</b> — la connexion sera vérifiée localement
-                (compte déjà connecté sur cet appareil).
+              <div className="login-offline" role="status">
+                <IonIcon icon={locationOutline} aria-hidden="true" />
+                <span>
+                  <strong>Mode hors ligne</strong>
+                  Vous pourrez travailler sur le terrain sans connexion Internet après synchronisation.
+                </span>
               </div>
             )}
-            <IonText color="medium" style={{ display: 'block', textAlign: 'center', marginTop: 16, fontSize: 12 }}>
-              <p>Compte démo : admin / admin</p>
+
+            {online && (
+              <div className="login-offline login-online" role="status">
+                <IonIcon icon={locationOutline} aria-hidden="true" />
+                <span>
+                  <strong>Accès terrain disponible</strong>
+                  Synchronisez vos données avant de partir.
+                </span>
+              </div>
+            )}
+
+            <IonText className="login-demo">
+              <p>Compte démo : <strong>admin / admin</strong></p>
             </IonText>
 
             {debug && (
-              <div style={{
-                marginTop: 12, padding: 8, borderRadius: 6,
-                background: '#f3f4f6', fontSize: 10, fontFamily: 'monospace',
-                color: '#374151', whiteSpace: 'pre-wrap', wordBreak: 'break-all',
-              }}>
-                {debug}
-              </div>
+              <details className="login-debug">
+                <summary>Informations techniques</summary>
+                <div>{debug}</div>
+              </details>
             )}
-          </div>
-        </div>
+          </section>
+
+          <footer className="login-footer">
+            <strong>SEIMAD</strong> · Système de gestion du patrimoine foncier<br />
+            Application mobile
+          </footer>
+        </main>
       </IonContent>
     </IonPage>
   );

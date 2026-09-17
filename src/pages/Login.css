@@ -1,0 +1,294 @@
+/* =========================================================
+   Login — style inspiré de Facebook
+   ========================================================= */
+
+.login-content {
+  --background: #f0f2f5;
+}
+
+.login-content::part(scroll) {
+  min-height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ---------- Barre bleue supérieure ---------- */
+.login-topbar {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 60px;
+  padding: 0 16px;
+  background: #1877f2;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+}
+
+.login-topbar-logo {
+  width: 34px;
+  height: 34px;
+  object-fit: cover;
+  border-radius: 8px;
+  background: #fff;
+}
+
+.login-topbar-name {
+  color: #fff;
+  font-size: 1.4rem;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+
+/* ---------- Zone centrale ---------- */
+.login-shell {
+  box-sizing: border-box;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 28px 16px max(24px, env(safe-area-inset-bottom));
+  background: #f0f2f5;
+  color: #1c1e21;
+}
+
+/* ---------- Carte blanche ---------- */
+.login-card {
+  box-sizing: border-box;
+  width: min(100%, 396px);
+  padding: 20px;
+  border-radius: 8px;
+  background: #fff;
+  box-shadow:
+    0 2px 4px rgba(0, 0, 0, 0.1),
+    0 8px 16px rgba(0, 0, 0, 0.1);
+}
+
+.login-card-heading {
+  margin: 0 0 6px;
+  color: #1c1e21;
+  font-size: 1.25rem;
+  font-weight: 700;
+  line-height: 1.25;
+  text-align: center;
+}
+
+.login-card-sub {
+  margin: 0 0 18px;
+  color: #606770;
+  font-size: 0.82rem;
+  line-height: 1.45;
+  text-align: center;
+}
+
+/* ---------- Formulaire ---------- */
+.login-form {
+  display: grid;
+  gap: 12px;
+}
+
+.login-field {
+  --background: #fff;
+  --border-radius: 6px;
+  --padding-start: 12px;
+  --inner-padding-end: 8px;
+  --min-height: 52px;
+  --highlight-height: 0;
+  border: 1px solid #dddfe2;
+  border-radius: 6px;
+  transition: border-color 140ms ease, box-shadow 140ms ease;
+}
+
+.login-field.item-has-focus,
+.login-field:focus-within {
+  border-color: #1877f2;
+  box-shadow: 0 0 0 2px #e7f3ff;
+}
+
+.login-field ion-icon[slot='start'] {
+  flex: 0 0 auto;
+  margin: 0 10px 0 0;
+  color: #8d949e;
+  font-size: 18px;
+}
+
+.login-field ion-input {
+  --color: #1c1e21;
+  --placeholder-color: #8d949e;
+  --placeholder-opacity: 1;
+  font-size: 0.95rem;
+}
+
+.password-toggle {
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  width: 34px;
+  height: 34px;
+  border: 0;
+  border-radius: 50%;
+  color: #606770;
+  background: transparent;
+  cursor: pointer;
+  font-size: 18px;
+}
+
+.password-toggle:active,
+.password-toggle:focus-visible {
+  background: #f0f2f5;
+}
+
+/* ---------- Bouton principal ---------- */
+.login-submit {
+  --background: #1877f2;
+  --background-activated: #166fe5;
+  --background-hover: #166fe5;
+  --border-radius: 6px;
+  --box-shadow: none;
+  height: 48px;
+  margin: 4px 0 0;
+  font-size: 1rem;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  text-transform: none;
+}
+
+.login-submit::part(native) {
+  border-radius: 6px;
+}
+
+.login-submit ion-spinner {
+  width: 22px;
+  height: 22px;
+  color: #fff;
+}
+
+/* ---------- Erreur ---------- */
+.login-error {
+  margin-bottom: 14px;
+  padding: 10px 12px;
+  border: 1px solid #f5c2c0;
+  border-radius: 6px;
+  color: #b42318;
+  background: #fff3f2;
+  font-size: 0.8rem;
+  line-height: 1.4;
+}
+
+/* ---------- Séparateur ---------- */
+.login-divider {
+  height: 1px;
+  margin: 20px 0;
+  border: 0;
+  background: #dadde1;
+}
+
+.login-section-label {
+  margin: 0 0 10px;
+  color: #8d949e;
+  font-size: 0.66rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-align: center;
+}
+
+/* ---------- Bloc hors-ligne / en ligne ---------- */
+.login-offline {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 11px 12px;
+  border-radius: 8px;
+  color: #606770;
+  background: #f0f2f5;
+  font-size: 0.76rem;
+  line-height: 1.45;
+}
+
+.login-offline ion-icon {
+  flex: 0 0 auto;
+  margin-top: 1px;
+  color: #1877f2;
+  font-size: 17px;
+}
+
+.login-offline strong {
+  display: block;
+  margin-bottom: 2px;
+  color: #1c1e21;
+  font-size: 0.78rem;
+}
+
+.login-online ion-icon {
+  color: #42b72a;
+}
+
+/* ---------- Divers ---------- */
+.login-demo {
+  display: block;
+  margin-top: 16px;
+  color: #8d949e;
+  text-align: center;
+  font-size: 0.72rem;
+}
+
+.login-demo p {
+  margin: 0;
+}
+
+.login-demo strong {
+  color: #606770;
+}
+
+.login-debug {
+  margin-top: 14px;
+  color: #606770;
+  font-family: monospace;
+  font-size: 0.62rem;
+}
+
+.login-debug summary {
+  cursor: pointer;
+  font-size: 0.7rem;
+}
+
+.login-debug div {
+  margin-top: 8px;
+  padding: 8px;
+  border-radius: 6px;
+  background: #f0f2f5;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.login-footer {
+  margin-top: 22px;
+  color: #8d949e;
+  font-size: 0.68rem;
+  line-height: 1.5;
+  text-align: center;
+}
+
+.login-footer strong {
+  color: #606770;
+}
+
+/* ---------- Petits écrans ---------- */
+@media (max-width: 380px) {
+  .login-topbar {
+    height: 54px;
+    padding: 0 12px;
+  }
+
+  .login-topbar-name {
+    font-size: 1.25rem;
+  }
+
+  .login-shell {
+    padding-inline: 12px;
+  }
+
+  .login-card {
+    padding: 16px;
+  }
+}

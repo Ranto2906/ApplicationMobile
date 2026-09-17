@@ -8,7 +8,9 @@
 // ══════════════════════════════════════════════════════════════
 import { db, dataUrlToBlob } from './db';
 import { signalementApi } from './signalementService';
+import { descenteTerrainApi } from './descenteTerrainService';
 import type { SignalementRequest } from '../types/signalement';
+import type { DescenteTerrainRequest } from '../types/descenteTerrain';
 
 export interface ResultatSync {
   total: number;
@@ -94,7 +96,38 @@ async function pousserOperation(op: {
     }
     throw new Error(`Action inconnue : ${op.action}`);
   }
-  // Le mobile ne crée que des signalements : l'assignation avec les
+  if (op.entiteType === 'descente_terrain') {
+    const request = JSON.parse(op.payload) as DescenteTerrainRequest;
+    if (op.action === 'CREATE') {
+      const cree = await descenteTerrainApi.creer(request);
+      // Photos du constat.
+      const photos: PhotoLocale[] = JSON.parse(op.photos || '[]');
+      for (const p of photos) {
+        try {
+          const form = new FormData();
+          form.append('fichier', dataUrlToBlob(p.dataUrl), `descente_${Date.now()}.png`);
+          form.append('entiteType', 'descente_terrain');
+          form.append('entiteId', cree.idDescente);
+          if (p.typePhoto) form.append('typePhoto', p.typePhoto);
+          if (p.datePrise) form.append('datePrise', p.datePrise);
+          if (p.observation) form.append('observation', p.observation);
+          await descenteTerrainApi.ajouterPhoto(form);
+        } catch {
+          // Une photo en échec ne bloque pas la synchronisation.
+        }
+      }
+      return;
+    }
+    if (op.action === 'UPDATE') {
+      const avecId = request as DescenteTerrainRequest & { idDescente?: string };
+      const id = avecId.idDescente;
+      if (!id) throw new Error('idDescente manquant pour la mise à jour');
+      await descenteTerrainApi.mettreAJour(id, request);
+      return;
+    }
+    throw new Error(`Action inconnue : ${op.action}`);
+  }
+  // Le mobile ne crée que des signalements et des descentes : l'assignation avec les
   // notifications/avertissements se fait côté web.
   throw new Error(`Entité non synchronisable : ${op.entiteType}`);
 }

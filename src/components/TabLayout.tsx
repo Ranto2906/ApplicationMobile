@@ -1,13 +1,15 @@
 import { lazy, Suspense } from 'react';
 import { IonTabs, IonTabBar, IonTabButton, IonIcon, IonLabel, IonRouterOutlet, IonSpinner } from '@ionic/react';
 import { Route, Redirect } from 'react-router-dom';
-import { home, megaphone, list, settings } from 'ionicons/icons';
+import { home, megaphone, clipboardOutline, settings } from 'ionicons/icons';
 
 const Dashboard = lazy(() => import('../pages/Dashboard'));
 const SignalementsList = lazy(() => import('../pages/signalements/SignalementsList'));
 const SignalementCreate = lazy(() => import('../pages/signalements/SignalementCreate'));
 const SignalementDetail = lazy(() => import('../pages/signalements/SignalementDetail'));
-const Journal = lazy(() => import('../pages/Journal'));
+const DescenteTerrainList = lazy(() => import('../pages/descente-terrain/DescenteTerrainList'));
+const DescenteTerrainCreate = lazy(() => import('../pages/descente-terrain/DescenteTerrainCreate'));
+const DescenteTerrainDetail = lazy(() => import('../pages/descente-terrain/DescenteTerrainDetail'));
 const Settings = lazy(() => import('../pages/Settings'));
 
 function TabLoader() {
@@ -43,7 +45,17 @@ export default function TabLayout() {
               return <SignalementDetail key={id} />;
             }}
           />
-          <Route path="/tab/journal" component={Journal} exact />
+          <Route path="/tab/descente-terrain" component={DescenteTerrainList} exact />
+          <Route path="/tab/descente-terrain/nouveau" component={DescenteTerrainCreate} exact />
+          <Route
+            path="/tab/descente-terrain/:id"
+            exact
+            render={({ match }) => {
+              const { id } = match.params as { id: string };
+              if (id === 'nouveau') return null;
+              return <DescenteTerrainDetail key={id} />;
+            }}
+          />
           <Route path="/tab/settings" component={Settings} exact />
         </Suspense>
         <Route path="/tab" render={() => <Redirect to="/tab/dashboard" />} exact />
@@ -58,8 +70,8 @@ export default function TabLayout() {
           <IonIcon icon={megaphone} />
           <IonLabel>Signalements</IonLabel>
         </IonTabButton>
-        <IonTabButton tab="journal" href="/tab/journal">
-          <IonIcon icon={list} />
+        <IonTabButton tab="descente-terrain" href="/tab/descente-terrain">
+          <IonIcon icon={clipboardOutline} />
           <IonLabel>Descente</IonLabel>
         </IonTabButton>
         <IonTabButton tab="settings" href="/tab/settings">

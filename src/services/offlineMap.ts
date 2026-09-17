@@ -13,6 +13,8 @@ import L from 'leaflet';
 import { db } from './db';
 
 export const OSM_TILE_URL = 'https://tile.openstreetmap.org/{z}/{x}/{y}.png';
+export const BUNDLED_TILE_URL = '/assets/map-tiles/{z}/{x}/{y}.png';
+const BUNDLED_MAX_ZOOM = 14;
 export const TILE_ATTRIBUTION = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>';
 
 /** Petit PNG gris (1×1) pour les tuiles non disponibles hors-ligne. */
@@ -33,20 +35,18 @@ export class OfflineTileLayer extends L.TileLayer {
   /** true quand on force le mode hors-ligne (désactive le téléchargement réseau). */
   forceOffline: boolean;
 
-  /** Vrai quand la base SQLite locale est réellement utilisable. */
-  private sqliteOk: boolean;
-
   constructor(urlTemplate: string, options?: L.TileLayerOptions) {
     super(urlTemplate, { maxZoom: 19, ...options });
     this.forceOffline = false;
-    this.sqliteOk = this.estSqliteDisponible();
-    if (!this.sqliteOk) {
-      console.warn(
-        '[SEIMAD:offlineMap] cache SQLite ignoré — web SQLite indisponible.'
-      );
-    }
   }
 
+  /**
+   * Disponibilité SQLite vérifiée À LA DEMANDE (plus une seule fois au
+   * constructeur) : sur web, jeep-sqlite termine souvent de se charger APRÈS
+   * la création de la carte. Une décision figée au constructeur désactivait
+   * définitivement le cache de tuiles → carte grise hors-ligne même avec un
+   * cache rempli. Natif : toujours disponible.
+   */
   private estSqliteDisponible(): boolean {
     if (typeof Capacitor !== 'undefined' && Capacitor.getPlatform() !== 'web') {
       return true;
@@ -75,7 +75,9 @@ export class OfflineTileLayer extends L.TileLayer {
     const z = coords.z;
     const x = coords.x;
     const y = coords.y;
-    if (!Number.isFinite(z) || !Number.isFinite(x) || !Number.isFinite(y) || z < 0 || x < 0 || y < 0) {
+    const monde = Number.isInteger(z) && z >= 0 ? 2 ** z : 0;
+    if (!Number.isFinite(z) || !Number.isFinite(x) || !Number.isFinite(y)
+      || z < 0 || x < 0 || y < 0 || x >= monde || y >= monde) {
       return TUILE_ABSENTE;
     }
     return OSM_TILE_URL.replace('{z}', String(z)).replace('{x}', String(x)).replace('{y}', String(y));
@@ -97,35 +99,71 @@ export class OfflineTileLayer extends L.TileLayer {
       return tile;
     }
 
-    if (!this.sqliteOk) {
-      // Pas de cache local possible : tuile OSM en ligne ou tuile grise.
-      if (this.forceOffline || !navigator.onLine) {
-        tile.src = TUILE_ABSENTE;
-        terminer(tile);
-        return tile;
+    const bundledUrl = BUNDLED_TILE_URL
+      .replace('{z}', String(z)).replace('{x}', String(x)).replace('{y}', String(y));
+    const useBundledTile = () => new Promise<boolean>((resolve) => {
+      if (z > BUNDLED_MAX_ZOOM) {
+        resolve(false);
+        return;
       }
-      const url = this.getTileUrl(coords as any);
-      if (url === TUILE_ABSENTE) {
-        tile.src = TUILE_ABSENTE;
+      const image = new Image();
+      image.onload = () => {
+        tile.src = bundledUrl;
         terminer(tile);
-        return tile;
-      }
-      const img = new Image();
-      img.crossOrigin = 'anonymous';
-      img.onload = () => {
-        tile.src = img.src;
-        terminer(tile);
+        resolve(true);
       };
-      img.onerror = () => {
-        tile.src = TUILE_ABSENTE;
-        terminer(tile);
-      };
-      img.src = url;
+      image.onerror = () => resolve(false);
+      image.src = bundledUrl;
+    });
+
+    if (!this.estSqliteDisponible()) {
+      // Pas de cache local possible (encore) : tuile OSM en ligne ou tuile grise.
+      useBundledTile().then((bundled) => {
+        if (bundled) return;
+        if (this.forceOffline || !navigator.onLine) {
+          tile.src = TUILE_ABSENTE;
+          terminer(tile);
+          return;
+        }
+        const url = this.getTileUrl(coords as any);
+        if (url === TUILE_ABSENTE) {
+          tile.src = TUILE_ABSENTE;
+          terminer(tile);
+          return;
+        }
+        const img = new Image();
+        img.onload = () => { tile.src = img.src; terminer(tile); };
+        img.onerror = () => { tile.src = TUILE_ABSENTE; terminer(tile); };
+        img.src = url;
+      });
       return tile;
     }
 
-    db.getTuile(z, x, y)
+    useBundledTile()
+      .then((bundled) => bundled ? 'bundled' : db.getTuile(z, x, y))
       .then((dataUrl) => {
+        if (dataUrl === 'bundled') return;
+        if (!dataUrl) {
+          if (this.forceOffline || !navigator.onLine) {
+            tile.src = TUILE_ABSENTE;
+            terminer(tile);
+            return;
+          }
+          const url = this.getTileUrl(coords as any);
+          if (url === TUILE_ABSENTE) {
+            tile.src = TUILE_ABSENTE;
+            terminer(tile);
+            return;
+          }
+          const img = new Image();
+          img.onload = () => {
+            tile.src = img.src;
+            terminer(tile);
+          };
+          img.onerror = () => { tile.src = TUILE_ABSENTE; terminer(tile); };
+          img.src = url;
+          return;
+        }
         if (dataUrl) {
           tile.src = dataUrl;
           terminer(tile);
@@ -145,20 +183,9 @@ export class OfflineTileLayer extends L.TileLayer {
           return;
         }
         const img = new Image();
-        img.crossOrigin = 'anonymous';
         img.onload = () => {
           tile.src = img.src;
           terminer(tile);
-          // Sauvegarde silencieuse (best effort) dans SQLite.
-          fetch(url, { mode: 'cors' })
-            .then((r) => (r.ok ? r.blob() : null))
-            .then((blob) => {
-              if (!blob) return;
-              const fr = new FileReader();
-              fr.onload = () => db.sauverTuile(z, x, y, String(fr.result)).catch(() => undefined);
-              fr.readAsDataURL(blob);
-            })
-            .catch(() => undefined);
         };
         img.onerror = () => {
           tile.src = TUILE_ABSENTE;

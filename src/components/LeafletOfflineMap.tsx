@@ -72,7 +72,8 @@ export default function LeafletOfflineMap({
       minZoom: 3,
       maxZoom: 19,
     });
-    const couche = creerCoucheHorsLigne();
+    const couche = creerCoucheHorsLigne({ noWrap: true });
+    couche.setForceOffline(forceOffline || !navigator.onLine);
     couche.addTo(map);
     mapRef.current = map;
     coucheRef.current = couche;

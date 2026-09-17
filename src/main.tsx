@@ -108,7 +108,5 @@ import { defineCustomElements as jeepSqliteDefineCustomElements } from 'jeep-sql
 })();
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
-  <React.StrictMode>
-    <App />
-  </React.StrictMode>
+  <App />
 );

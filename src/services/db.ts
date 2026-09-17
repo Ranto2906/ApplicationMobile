@@ -644,6 +644,20 @@ class DatabaseService {
     return r.values && r.values.length > 0 ? Number((r.values[0] as any).n) : 0;
   }
 
+  /** Nombre total de photos embarquées dans la file locale (statistique tableau de bord). */
+  async nombrePhotosEnAttente(): Promise<number> {
+    const db = await this.getDb();
+    const r = await db.query('SELECT photos FROM pending_operations');
+    return (r.values ?? []).reduce((total, v: any) => {
+      try {
+        const photos = JSON.parse(String(v.photos ?? '[]')) as unknown[];
+        return total + (Array.isArray(photos) ? photos.length : 0);
+      } catch {
+        return total;
+      }
+    }, 0);
+  }
+
   /** Nombre de lignes d'une table. */
   async compterLignes(table: string): Promise<number> {
     const db = await this.getDb();

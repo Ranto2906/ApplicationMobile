@@ -1,7 +1,7 @@
 import { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import type { ReactNode } from 'react';
 import type { UtilisateurDTO, LoginRequest } from '../types';
-import { authApi, setTokens, clearTokens, getAccessToken } from '../services/api';
+import { authApi, setTokens, clearTokens } from '../services/api';
 import {
   enregistrerSessionLocale,
   restaurerSessionLocale,
@@ -55,64 +55,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const loadUser = useCallback(async () => {
     log('loadUser → démarrage (verification session)');
-    const token = getAccessToken();
-    if (!token) {
-      // Pas de token : tente une restauration depuis la base locale (hors-ligne).
-      log('loadUser → aucun accessToken → restauration session locale');
-      const début = performance.now();
-      const sessionUser = await restaurerSessionLocale().catch((e) => {
-        logErr(e, 'loadUser · restaurerSessionLocale échoué');
+    // Le démarrage ne dépend jamais du serveur. Une requête /auth/me ici
+    // provoquait un clignotement et pouvait bloquer le WebView sans réseau.
+    const stored = localStorage.getItem('user');
+    let localUser: UtilisateurDTO | null = null;
+    if (stored) {
+      try { localUser = JSON.parse(stored) as UtilisateurDTO; } catch { localUser = null; }
+    }
+    if (!localUser) {
+      localUser = await restaurerSessionLocale().catch((e) => {
+        logErr(e, 'loadUser · restauration locale échouée');
         return null;
       });
-      log('loadUser → restauration terminée en', `${(performance.now() - début).toFixed(0)}ms`, '| user:', !!sessionUser);
-      setUser(sessionUser);
-      setIsLoading(false);
-      return;
+    } else {
+      // Réapplique aussi les tokens de secours si le stockage des tokens a été vidé.
+      await restaurerSessionLocale().catch(() => null);
     }
-    log('loadUser → accessToken présent (longueur', token.length, ')');
-    const stored = localStorage.getItem('user');
-    if (stored) {
-      try {
-        setUser(JSON.parse(stored));
-      } catch {
-        log('loadUser → user localStorage corrompu → ignoré');
-      }
-    }
-
-    if (stored) {
-      // On dispose d'une session en cache : on affiche immédiatement l'app
-      // (hors-ligne OK) et on valide le token en arrière-plan.
-      setIsLoading(false);
-      log('loadUser → utilisateur en cache → app affichée, validation en arrière-plan');
-    }
-
-    try {
-      const début = performance.now();
-      const me = await authApi.getMe();
-      log('loadUser → /auth/me répondu en', `${(performance.now() - début).toFixed(0)}ms`);
-      setUser(me);
-      localStorage.setItem('user', JSON.stringify(me));
-    } catch (err) {
-      if (estErreurReseau(err)) {
-        log('loadUser → erreur réseau / serveur injoignable → repli session locale');
-        const début = performance.now();
-        const sessionUser = await restaurerSessionLocale().catch(() => null);
-        log('loadUser → repli terminé en', `${(performance.now() - début).toFixed(0)}ms`, '| user:', !!sessionUser);
-        if (sessionUser) {
-          setUser(sessionUser);
-          localStorage.setItem('user', JSON.stringify(sessionUser));
-        }
-        // Sinon on garde l'utilisateur en cache (déjà affiché) : mode hors-ligne.
-      } else {
-        // Token refusé par le serveur (401/403…) → session invalide.
-        logErr(err, 'loadUser · erreur authentification → déconnexion');
-        clearTokens();
-        setUser(null);
-      }
-    } finally {
-      setIsLoading(false);
-      log('loadUser → isLoading = false');
-    }
+    setUser(localUser);
+    setIsLoading(false);
+    log('loadUser → démarrage local terminé | user:', !!localUser);
   }, []);
 
   useEffect(() => { loadUser(); }, [loadUser]);

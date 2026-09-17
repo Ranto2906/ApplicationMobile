@@ -13,6 +13,7 @@
 // ══════════════════════════════════════════════════════════════
 import { db } from './db';
 import type { PendingOperation } from './db';
+import type { SignalementRequest } from '../types/signalement';
 
 // ── Types de la « réponse HTTP » locale ──
 export interface ReponseLocale {
@@ -74,6 +75,21 @@ route('POST', '/signalements', async (ctx) => {
     createdAt: new Date().toISOString(),
   };
   await db.ajouterOperationPending(op);
+  // Miroir local de la géométrie (géometrie_locale) : comme le faisait
+  // SignalementCreate directement, mais centralisé ici pour que TOUTES les
+  // écritures hors-ligne passent par « l'API locale » de l'application.
+  const req = request as SignalementRequest;
+  if (req?.geometrie?.geojson) {
+    await db.sauverGeometrieLocale({
+      entiteType: 'signalement',
+      entiteId: op.idLocal,
+      typeGeometrie: req.geometrie.typeGeometrie || 'Point',
+      geojson: req.geometrie.geojson,
+      precisionM: req.geometrie.precisionM ?? null,
+      source: req.geometrie.source ?? null,
+      synchronise: 0,
+    }).catch(() => undefined); // non bloquant : le signalement reste en file
+  }
   return { idLocal: op.idLocal, enAttente: true, message: 'Enregistré dans la base locale — à synchroniser' };
 });
 route('PUT', '/signalements/:id', async (ctx) => {
@@ -83,6 +99,36 @@ route('PUT', '/signalements/:id', async (ctx) => {
     entiteType: 'signalement',
     action: 'UPDATE',
     payload: JSON.stringify({ ...request, idSignalement: ctx.params.id }),
+    photos: JSON.stringify(photos ?? []),
+    position: JSON.stringify(position ?? {}),
+    createdAt: new Date().toISOString(),
+  };
+  await db.ajouterOperationPending(op);
+  return { idLocal: op.idLocal, enAttente: true, message: 'Modification enregistrée localement — à synchroniser' };
+});
+
+// ── Descente Terrain (écritures hors-ligne) ──
+route('POST', '/descente-terrain', async (ctx) => {
+  const { photos, position, ...request } = ctx.corps ?? {};
+  const op: PendingOperation = {
+    idLocal: uuid(),
+    entiteType: 'descente_terrain',
+    action: 'CREATE',
+    payload: JSON.stringify(request),
+    photos: JSON.stringify(photos ?? []),
+    position: JSON.stringify(position ?? {}),
+    createdAt: new Date().toISOString(),
+  };
+  await db.ajouterOperationPending(op);
+  return { idLocal: op.idLocal, enAttente: true, message: 'Descente enregistrée localement — à synchroniser' };
+});
+route('PUT', '/descente-terrain/:id', async (ctx) => {
+  const { photos, position, ...request } = ctx.corps ?? {};
+  const op: PendingOperation = {
+    idLocal: uuid(),
+    entiteType: 'descente_terrain',
+    action: 'UPDATE',
+    payload: JSON.stringify({ ...request, idDescente: ctx.params.id }),
     photos: JSON.stringify(photos ?? []),
     position: JSON.stringify(position ?? {}),
     createdAt: new Date().toISOString(),
@@ -108,6 +154,47 @@ route('GET', '/pending', async () => {
     payload: JSON.parse(o.payload || '{}'),
     createdAt: o.createdAt,
   }));
+});
+
+// ── Lectures hors-ligne (le mobile ne pull pas le serveur : ces routes
+//    servent uniquement ce qui existe DÉJÀ dans la base SQLite locale) ──
+
+/** Derniers signalements créés sur CET appareil et encore en attente (aperçu accueil). */
+route('GET', '/signalements/offline', async () => {
+  const ops = await db.listerOperationsPending();
+  return ops
+    .filter((o) => o.entiteType === 'signalement' && o.action === 'CREATE')
+    .map((o) => {
+      let pl: { description?: string; dateSignalement?: string } = {};
+      try { pl = JSON.parse(o.payload) as { description?: string; dateSignalement?: string }; } catch { /* payload corrompu */ }
+      return {
+        idSignalement: o.idLocal,
+        reference: pl.description?.slice(0, 40) || 'Brouillon local',
+        description: pl.description,
+        dateSignalement: o.createdAt,
+        libelleType: 'Signalement local',
+        libelleStatut: 'En attente de synchronisation',
+        codeStatut: 'en_attente',
+        couleurStatutHex: '#b7791f',
+        nomVille: undefined as string | undefined,
+        enAttente: true,
+      };
+    });
+});
+
+/** Statistiques du tableau de bord, calculées 100 % sur la base locale. */
+route('GET', '/dashboard/stats', async () => {
+  const [enAttente, photos, geometries] = await Promise.all([
+    db.nombreOperationsPending(),
+    db.nombrePhotosEnAttente(),
+    db.listerGeometriesNonSynchronisees().catch(() => []),
+  ]);
+  return {
+    enAttente,
+    photos,
+    geometriesNonSynchronisees: geometries.length,
+    derniereSynchro: await db.getMeta('derniere_synchro'),
+  };
 });
 
 // ── Diagnostic SQLite (miroir de api.js) ──

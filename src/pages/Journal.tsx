@@ -6,6 +6,7 @@ import {
 } from '@ionic/react';
 import { useAuth } from '../context/AuthContext';
 import { adminApi } from '../services/api';
+import { useOnline } from '../hooks/useOnline';
 import type { JournalConnexionDTO, PageResponse } from '../types';
 
 export default function Journal() {
@@ -17,9 +18,19 @@ export default function Journal() {
   const [currentPage, setCurrentPage] = useState(0);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<string>('all');
+  const online = useOnline();
 
   const loadJournal = useCallback(async () => {
     setLoading(true);
+    // Hors-ligne : le journal des connexions vit côté serveur (aucun miroir
+    // local) — on affiche un état vide explicite au lieu de laisser le spinner
+    // tourner pendant le timeout axios (8 s).
+    if (!online) {
+      setEntries([]);
+      setPage(null);
+      setLoading(false);
+      return;
+    }
     try {
       const data = await adminApi.journal(currentPage, 30);
       let filtered = data.content;
@@ -29,7 +40,7 @@ export default function Journal() {
       setPage({ ...data, content: filtered });
     } catch { /* ignore */ }
     finally { setLoading(false); }
-  }, [currentPage, filter]);
+  }, [currentPage, filter, online]);
 
   useEffect(() => { loadJournal(); }, [loadJournal]);
 
@@ -54,7 +65,7 @@ export default function Journal() {
   return (
     <IonPage>
       <IonHeader>
-        <IonToolbar style={{ '--background': '#1a56db', '--color': 'white' }}>
+        <IonToolbar style={{ '--background': '#0d435d', '--color': 'white' }}>
           <IonTitle>📋 Journal</IonTitle>
         </IonToolbar>
         <IonToolbar>
@@ -83,7 +94,12 @@ export default function Journal() {
           </div>
         ) : entries.length === 0 ? (
           <div style={{ textAlign: 'center', padding: 40, color: '#9ca3af' }}>
-            <p>Aucune entrée</p>
+            <p>{!online ? '📴 Journal indisponible hors-ligne' : 'Aucune entrée'}</p>
+            {!online && (
+              <p style={{ fontSize: 12, marginTop: 4 }}>
+                Reconnectez-vous au serveur pour consulter le journal des connexions.
+              </p>
+            )}
           </div>
         ) : (
           <IonList>

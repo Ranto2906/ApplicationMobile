@@ -14,6 +14,7 @@ import L from 'leaflet';
 import LeafletOfflineMap, { type PointGeo } from '../../components/LeafletOfflineMap';
 import { signalementApi } from '../../services/signalementService';
 import { db } from '../../services/db';
+import localApi from '../../services/localApi';
 import { synchroniserSignalements } from '../../services/syncService';
 import { telechargerZone, type OfflineTileLayer } from '../../services/offlineMap';
 import { useOnline } from '../../hooks/useOnline';
@@ -88,6 +89,11 @@ export default function SignalementCreate() {
         if (v.length > 0) setVilles(v);
         setRefsFromCache(true);
       };
+      if (!online) {
+        await chargerDepuisCache();
+        if (actif) setLoadingRefs(false);
+        return;
+      }
       try {
         const [t, v] = await Promise.all([signalementApi.types(), signalementApi.villes()]);
         if (!actif) return;
@@ -113,7 +119,7 @@ export default function SignalementCreate() {
       }
     })();
     return () => { actif = false; };
-  }, [sqliteOk]);
+  }, [sqliteOk, online]);
 
   // Détection hors-ligne → la carte n'essaie plus de télécharger.
   useEffect(() => { setForceOffline(!online); }, [online]);
@@ -303,6 +309,9 @@ export default function SignalementCreate() {
       }
 
       // File locale (SQLite) : mode hors-ligne ou repli après échec API.
+      // L'écriture passe par l'API LOCALE de l'application (localApi → SQLite),
+      // comme un appel HTTP : mise en file (pending_operations) + miroir
+      // géométrie (geometrie_locale) gérés centralisés côté localApi.
       if (!sqliteOk) {
         setToast(
           online
@@ -313,23 +322,12 @@ export default function SignalementCreate() {
         return;
       }
 
-      idLocal = uuid();
-      await db.ajouterOperationPending({
-        idLocal,
-        entiteType: 'signalement',
-        action: 'CREATE',
-        payload: JSON.stringify(request),
-        photos: JSON.stringify(photoMetas),
-        position: JSON.stringify(position),
-        createdAt: new Date().toISOString(),
+      const rep = await localApi.post<{ idLocal: string; enAttente: boolean }>('/signalements', {
+        ...request,
+        photos: photoMetas,
+        position,
       });
-      // Géométrie locale en attente d'envoi (synchronise=0) : elle sera poussée
-      // vers la table `geometrie` du serveur lors de la synchronisation.
-      await db.sauverGeometrieLocale({
-        ...geometrieLocale,
-        entiteId: idLocal,
-        synchronise: 0,
-      }).catch(() => undefined);
+      idLocal = rep.idLocal;
       setToast('Enregistré localement — synchronisation automatique au retour du réseau');
       setToastColor('success');
       setTimeout(() => history.replace('/tab/signalements'), 1500);
@@ -371,7 +369,7 @@ export default function SignalementCreate() {
   return (
     <IonPage>
       <IonHeader>
-        <IonToolbar style={{ '--background': '#1a56db', '--color': 'white' }}>
+        <IonToolbar style={{ '--background': '#0d435d', '--color': 'white' }}>
           <IonButtons slot="start">
             <IonButton onClick={annuler}>
               <IonIcon icon={chevronBack} />
@@ -540,7 +538,7 @@ export default function SignalementCreate() {
             <div style={{ background: '#e2e8f0', borderRadius: 6, height: 6, overflow: 'hidden' }}>
               <div style={{
                 width: downloadProgress.total > 0 ? `${Math.round((downloadProgress.fait / downloadProgress.total) * 100)}%` : '0%',
-                background: '#1a56db', height: '100%', transition: 'width .3s',
+                background: '#176b87', height: '100%', transition: 'width .3s',
               }} />
             </div>
           </div>
@@ -569,7 +567,7 @@ export default function SignalementCreate() {
           expand="block"
           disabled={saving}
           onClick={enregistrer}
-          style={{ '--border-radius': 12, height: 50, fontWeight: 700, marginBottom: 30, '--background': '#1a56db' }}
+          style={{ '--border-radius': 12, height: 50, fontWeight: 700, marginBottom: 30, '--background': '#176b87' }}
         >
           {saving ? <IonSpinner name="crescent" /> : '💾 Enregistrer le signalement'}
         </IonButton>
