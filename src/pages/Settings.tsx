@@ -59,7 +59,7 @@ export default function Settings() {
       setToastMsg(
         res.total === 0
           ? '✔ Rien à envoyer — la base locale est à jour'
-          : `✔ Synchro : ${res.reussis}/${res.total} envoyé(s)${res.echecs ? ` (${res.echecs} échec(s))` : ''}`
+          : `✔ Synchro : ${res.reussis}/${res.total} envoyé(s)${res.echecs ? ` (${res.echecs} échec(s))` : ''}${res.photosRefilees ? ` — ${res.photosRefilees} photo(s) à renvoyer` : ''}`
       );
       setToastColor(res.echecs > 0 ? 'warning' : 'success');
       await rechargerStatsLocales();

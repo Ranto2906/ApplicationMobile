@@ -3,7 +3,7 @@ import {
   IonPage, IonHeader, IonToolbar, IonTitle, IonButtons, IonButton, IonIcon, IonContent,
   IonSpinner, IonToast, IonBadge, IonAlert,
 } from '@ionic/react';
-import { chevronBack, trashOutline, syncOutline, downloadOutline } from 'ionicons/icons';
+import { chevronBack, trashOutline, syncOutline, downloadOutline, createOutline } from 'ionicons/icons';
 import { useHistory, useParams } from 'react-router-dom';
 import type L from 'leaflet';
 import LeafletOfflineMap, { type PointGeo } from '../../components/LeafletOfflineMap';
@@ -25,6 +25,8 @@ export default function SignalementDetail() {
 
   const [sig, setSig] = useState<SignalementDTO | null>(null);
   const [pending, setPending] = useState<PendingOperation | null>(null);
+  /** Modification déjà mise en file (PUT rejoué à la synchronisation). */
+  const [majEnAttente, setMajEnAttente] = useState<PendingOperation | null>(null);
   const [position, setPosition] = useState<PointGeo | null>(null);
   const [photos, setPhotos] = useState<PhotoSignalementDTO[]>([]);
   const [historique, setHistorique] = useState<Array<{ action?: string; dateAction?: string; nomUtilisateur?: string }>>([]);
@@ -61,8 +63,14 @@ export default function SignalementDetail() {
       } catch (e) {
         console.warn('[SEIMAD:Detail] base locale indisponible — brouillon ignoré', e);
       }
-      setPending(p);
-      if (p) {
+      setPending(null);
+      setMajEnAttente(null);
+      // Une création encore en file est un brouillon local ; une modification en
+      // attente (UPDATE) se cumule au contraire avec les données serveur.
+      const estBrouillon = !!p && p.action === 'CREATE' && p.entiteType === 'signalement';
+      const opMaj = p && p.action === 'UPDATE' && p.entiteType === 'signalement' ? p : null;
+      if (estBrouillon && p) {
+        setPending(p);
         const payload = JSON.parse(p.payload) as SignalementDTO;
         setSig({
           idSignalement: p.idLocal,
@@ -79,6 +87,7 @@ export default function SignalementDetail() {
         setHistorique([]);
         return;
       }
+      setMajEnAttente(opMaj);
 
       // 2) Signalement du serveur (détail complet : photos + historique).
       //    Aucun pull : hors-ligne, seuls les brouillons locaux sont consultables.
@@ -101,6 +110,26 @@ export default function SignalementDetail() {
           // Erreur réseau temporaire — on garde l'état précédent si existant
           return;
         }
+      }
+
+      // Hors-ligne sans brouillon local connu : modification en file → aperçu minimal.
+      if (opMaj) {
+        const payload = JSON.parse(opMaj.payload) as {
+          description?: string; dateSignalement?: string;
+        };
+        setSig({
+          idSignalement: id,
+          reference: 'Modification locale',
+          description: payload.description,
+          dateSignalement: payload.dateSignalement || opMaj.createdAt,
+          libelleStatut: 'Modification en attente de synchronisation',
+          codeStatut: 'en_attente',
+          libelleType: 'Signalement local',
+        });
+        setPosition(await lirePositionGeometrie(id));
+        setPhotos([]);
+        setHistorique([]);
+        return;
       }
 
       // Hors-ligne sans brouillon local connu
@@ -157,6 +186,7 @@ export default function SignalementDetail() {
           // L'id local disparaît (le serveur génère le sien) → retour à la liste.
           setTimeout(() => history.replace('/tab/signalements'), 900);
         } else {
+          lastLoadedRef.current = null; // forcer le rechargement (état local à jour)
           await charger();
         }
       } else {
@@ -177,13 +207,17 @@ export default function SignalementDetail() {
         await signalementApi.supprimer(id);
         await db.supprimerGeometrieLocale('signalement', id).catch(() => undefined);
       }
+      // Une modification en file ne doit pas rejouer un PUT sur un entité supprimée.
+      if (majEnAttente) {
+        await db.supprimerOperationPending(majEnAttente.idLocal).catch(() => undefined);
+      }
       setToast('Signalement supprimé');
       setTimeout(() => history.replace('/tab/signalements'), 800);
     } catch {
       setToast('Suppression impossible');
       setToastColor('danger');
     }
-  }, [id, pending, history]);
+  }, [id, pending, majEnAttente, history]);
 
   const estLocal = !!pending;
   const statutCouleur = useMemo(
@@ -214,6 +248,13 @@ export default function SignalementDetail() {
           </IonButtons>
           <IonTitle>Détail signalement</IonTitle>
           <IonButtons slot="end">
+            <IonButton
+              onClick={() => history.push(`/tab/signalements/modifier/${id}`)}
+              style={{ color: 'white' }}
+              aria-label="Modifier"
+            >
+              <IonIcon icon={createOutline} />
+            </IonButton>
             <IonButton onClick={() => setConfirmDelete(true)} style={{ color: '#fca5a5' }}>
               <IonIcon icon={trashOutline} />
             </IonButton>
@@ -244,6 +285,11 @@ export default function SignalementDetail() {
                 <IonBadge style={{ background: statutCouleur, color: '#fff', fontSize: 10.5 }}>
                   {sig.libelleStatut || 'Nouveau'}
                 </IonBadge>
+                {majEnAttente && (
+                  <IonBadge style={{ background: '#176b87', color: '#fff', fontSize: 10.5 }}>
+                    ✏️ modifié localement
+                  </IonBadge>
+                )}
               </div>
 
               {/* Type + ville + rattachements (badges colorés) */}
@@ -385,11 +431,11 @@ export default function SignalementDetail() {
               )}
             </div>
 
-            {/* Brouillon local → bouton sync */}
-            {estLocal && (
+            {/* Brouillon local / modification en attente → bouton sync */}
+            {(estLocal || majEnAttente) && (
               <IonButton expand="block" onClick={synchroniserUn} disabled={syncing || !online} style={{ '--border-radius': 12, marginBottom: 10 }}>
                 <IonIcon icon={syncOutline} slot="start" />
-                {syncing ? 'Synchronisation…' : 'Synchroniser maintenant'}
+                {syncing ? 'Synchronisation…' : estLocal ? 'Synchroniser maintenant' : 'Synchroniser la modification'}
               </IonButton>
             )}
 

@@ -9,20 +9,24 @@ setlocal enabledelayedexpansion
 echo.
 echo 📦 1. Build web...
 call npm run build
+if errorlevel 1 exit /b 1
 
 echo.
 echo 🔄 2. Sync Capacitor...
 call npx cap sync android
+if errorlevel 1 exit /b 1
 
 echo.
 echo 🤖 3. Build APK...
 cd android
 call gradlew.bat assembleDebug
+if errorlevel 1 exit /b 1
 cd ..
 
 echo.
 echo 📋 4. Copie du APK...
-copy "android\app\build\outputs\apk\debug\app-debug.apk" "SEIMAD-debug.apk"
+copy /Y "android\app\build\outputs\apk\debug\app-debug.apk" "SEIMAD-debug.apk" >nul
+if errorlevel 1 exit /b 1
 
 echo.
 echo ✅ Terminé !

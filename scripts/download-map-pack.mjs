@@ -6,12 +6,11 @@ const root = dirname(dirname(fileURLToPath(import.meta.url)));
 const outputRoot = join(root, 'public', 'assets', 'map-tiles');
 const tileUrl = 'https://tile.openstreetmap.org/{z}/{x}/{y}.png';
 
-// Pack compact par defaut: Madagascar aux niveaux de contexte, Antananarivo
-// aux niveaux detailles. Les zones de travail peuvent ensuite etre ajoutees
-// avec le bouton de telechargement de l'application.
+// Pack national : Madagascar est embarquee jusqu'au zoom 10 afin de couvrir
+// toutes les provinces pour les deplacements. Les niveaux plus detailles
+// restent telechargeables localement avec le bouton de l'application.
 const ranges = [
-  { minZoom: 5, maxZoom: 8, west: 43, south: -26, east: 51, north: -11 },
-  { minZoom: 9, maxZoom: 14, west: 47.35, south: -19.05, east: 47.65, north: -18.75 },
+  { minZoom: 5, maxZoom: 10, west: 43, south: -26, east: 51, north: -11 },
 ];
 
 function tileX(longitude, zoom) {
@@ -40,9 +39,7 @@ async function downloadTile(z, x, y) {
   return 'telecharge';
 }
 
-let downloaded = 0;
-let present = 0;
-let failed = 0;
+const tasks = [];
 for (const range of ranges) {
   for (let z = range.minZoom; z <= range.maxZoom; z += 1) {
     const xMin = tileX(range.west, z);
@@ -51,19 +48,35 @@ for (const range of ranges) {
     const yMax = tileY(range.south, z);
     for (let x = xMin; x <= xMax; x += 1) {
       for (let y = yMin; y <= yMax; y += 1) {
-        try {
-          const result = await downloadTile(z, x, y);
-          if (result === 'present') present += 1;
-          else downloaded += 1;
-          console.log(`${result}: ${z}/${x}/${y}`);
-        } catch (error) {
-          failed += 1;
-          console.warn(`echec: ${z}/${x}/${y} - ${error.message}`);
-        }
+        tasks.push({ z, x, y });
       }
     }
   }
 }
+
+let downloaded = 0;
+let present = 0;
+let failed = 0;
+let cursor = 0;
+const worker = async () => {
+  while (cursor < tasks.length) {
+    const task = tasks[cursor];
+    cursor += 1;
+    try {
+      const result = await downloadTile(task.z, task.x, task.y);
+      if (result === 'present') present += 1;
+      else downloaded += 1;
+      console.log(`${result}: ${task.z}/${task.x}/${task.y}`);
+    } catch (error) {
+      failed += 1;
+      console.warn(`echec: ${task.z}/${task.x}/${task.y} - ${error.message}`);
+    }
+  }
+};
+
+// Quatre requetes simultanees : generation plus rapide, sans ouvrir un flot
+// trop important vers le serveur de tuiles.
+await Promise.all(Array.from({ length: 4 }, worker));
 
 await mkdir(outputRoot, { recursive: true });
 await writeFile(join(outputRoot, 'README.txt'),

@@ -583,9 +583,19 @@ class DatabaseService {
   }
 
   async lireReferentiel(cle: string): Promise<string | null> {
-    const db = await this.getDb();
-    const r = await db.query('SELECT valeur FROM referentiels_cache WHERE cle = ?', [cle]);
-    return r.values && r.values.length > 0 ? String((r.values[0] as any).valeur) : null;
+    // Résilient comme getMeta : sur le terrain (rechargement hors-ligne, base
+    // pas encore initialisée), une exception ici faisait planter le remplissage
+    // des listes types/villes du formulaire — le formulaire restait bloqué sur
+    // « Chargement… » avec des listes vides. On renvoie null → l'appelant peut
+    // appliquer son repli (cache embarqué).
+    try {
+      const db = await this.getDb();
+      const r = await db.query('SELECT valeur FROM referentiels_cache WHERE cle = ?', [cle]);
+      return r.values && r.values.length > 0 ? String((r.values[0] as any).valeur) : null;
+    } catch (e: any) {
+      console.warn(`[SEIMAD:db] lireReferentiel → repli (base non prête) pour cle=${cle}`, e?.message || e);
+      return null;
+    }
   }
 
   // ── File générique d'opérations hors-ligne (poussée à la synchro) ──

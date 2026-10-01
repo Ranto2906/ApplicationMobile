@@ -14,7 +14,8 @@ import { db } from './db';
 
 export const OSM_TILE_URL = 'https://tile.openstreetmap.org/{z}/{x}/{y}.png';
 export const BUNDLED_TILE_URL = '/assets/map-tiles/{z}/{x}/{y}.png';
-const BUNDLED_MAX_ZOOM = 14;
+/** Dernier niveau de zoom couvert par les tuiles embarquées (public/assets/map-tiles). */
+export const BUNDLED_MAX_ZOOM = 14;
 export const TILE_ATTRIBUTION = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>';
 
 /** Petit PNG gris (1×1) pour les tuiles non disponibles hors-ligne. */
@@ -83,6 +84,55 @@ export class OfflineTileLayer extends L.TileLayer {
     return OSM_TILE_URL.replace('{z}', String(z)).replace('{x}', String(x)).replace('{y}', String(y));
   }
 
+  /**
+   * Recherche une « tuile ancêtre » disponible (cache SQLite, puis assets
+   * embarqués) et l'affiche à la place de la tuile demandée — Leaflet l'étire
+   * automatiquement sur la zone. Utilisé hors-ligne : sans lui, toute vue
+   * au-delà du zoom 14 (les tuiles embarquées s'arrêtent là) montrait des
+   * tuiles grises même dans une zone précédemment téléchargée.
+   * Renvoie true si une tuile ancêtre a été trouvée et appliquée.
+   */
+  private async afficherTuileAncetre(coords: L.Coords, tile: HTMLImageElement): Promise<boolean> {
+    const z = coords.z;
+    const disponible = this.estSqliteDisponible();
+    for (let az = z - 1; az >= 3; az -= 1) {
+      const div = 2 ** (z - az);
+      const ax = Math.floor(coords.x / div);
+      const ay = Math.floor(coords.y / div);
+      // 1) Cache SQLite (zone éventuellement téléchargée, tous niveaux).
+      if (disponible) {
+        try {
+          // Garde-fou : si la base n'est pas initialisée (initWebStore suspendu
+          // après un rechargement hors-ligne), on n'attend pas indéfiniment.
+          const dataUrl = await Promise.race([
+            db.getTuile(az, ax, ay),
+            new Promise<null>((resolve) => setTimeout(() => resolve(null), 2000)),
+          ]);
+          if (dataUrl) {
+            tile.src = dataUrl;
+            return true;
+          }
+        } catch { /* base non prête : on remonte d'un niveau */ }
+      }
+      // 2) Assets embarqués (pays entier jusqu'au zoom 14).
+      if (az <= BUNDLED_MAX_ZOOM) {
+        const url = BUNDLED_TILE_URL
+          .replace('{z}', String(az)).replace('{x}', String(ax)).replace('{y}', String(ay));
+        const ok = await new Promise<boolean>((resolve) => {
+          const probe = new Image();
+          probe.onload = () => resolve(true);
+          probe.onerror = () => resolve(false);
+          probe.src = url;
+        });
+        if (ok) {
+          tile.src = url;
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
   override createTile(coords: L.Coords, done: L.DoneCallback): HTMLElement {
     const tile = document.createElement('img');
     const z = coords.z;
@@ -118,11 +168,18 @@ export class OfflineTileLayer extends L.TileLayer {
 
     if (!this.estSqliteDisponible()) {
       // Pas de cache local possible (encore) : tuile OSM en ligne ou tuile grise.
-      useBundledTile().then((bundled) => {
+      useBundledTile().then(async (bundled) => {
         if (bundled) return;
         if (this.forceOffline || !navigator.onLine) {
-          tile.src = TUILE_ABSENTE;
-          terminer(tile);
+          // Hors-ligne : dernier recours = tuile ancêtre (assets embarqués),
+          // plutôt qu'une carte entièrement grise.
+          const trouvee = await this.afficherTuileAncetre(coords, tile);
+          if (trouvee) {
+            terminer(tile);
+          } else {
+            tile.src = TUILE_ABSENTE;
+            terminer(tile);
+          }
           return;
         }
         const url = this.getTileUrl(coords as any);
@@ -140,13 +197,20 @@ export class OfflineTileLayer extends L.TileLayer {
     }
 
     useBundledTile()
-      .then((bundled) => bundled ? 'bundled' : db.getTuile(z, x, y))
-      .then((dataUrl) => {
+      .then(async (bundled) => bundled ? 'bundled' : db.getTuile(z, x, y))
+      .then(async (dataUrl) => {
         if (dataUrl === 'bundled') return;
         if (!dataUrl) {
           if (this.forceOffline || !navigator.onLine) {
-            tile.src = TUILE_ABSENTE;
-            terminer(tile);
+            // Hors-ligne : tuile absente du cache → tuile ancêtre (SQLite ou
+            // assets embarqués) au lieu d'une tuile grise.
+            const trouvee = await this.afficherTuileAncetre(coords, tile);
+            if (trouvee) {
+              terminer(tile);
+            } else {
+              tile.src = TUILE_ABSENTE;
+              terminer(tile);
+            }
             return;
           }
           const url = this.getTileUrl(coords as any);
@@ -193,11 +257,22 @@ export class OfflineTileLayer extends L.TileLayer {
         };
         img.src = url;
       })
-      .catch(() => {
+      .catch(async () => {
         // Erreur SQLite (pas encore initialisée, couche retirée…) → repli
-        // réseau, mais jamais avec un zoom invalide (NaN).
+        // réseau, mais jamais avec un zoom invalide (NaN). Hors-ligne, on
+        // tente d'abord une tuile ancêtre plutôt qu'une tuile grise.
+        if (this.forceOffline || !navigator.onLine) {
+          const trouvee = await this.afficherTuileAncetre(coords, tile);
+          if (trouvee) {
+            terminer(tile);
+            return;
+          }
+          tile.src = TUILE_ABSENTE;
+          terminer(tile);
+          return;
+        }
         const url = this.getTileUrl(coords as any);
-        if (this.forceOffline || !navigator.onLine || url === TUILE_ABSENTE) {
+        if (url === TUILE_ABSENTE) {
           tile.src = TUILE_ABSENTE;
         } else {
           tile.src = url;
@@ -226,6 +301,10 @@ export interface OptionsTelechargement {
   /** Niveaux de zoom à télécharger (bornés 8..19 par sécurité). */
   minZoom: number;
   maxZoom: number;
+  /** Zone explicite à télécharger ; par défaut, la vue actuelle. */
+  bounds?: [L.LatLngExpression, L.LatLngExpression];
+  /** Limite par niveau, plus haute uniquement pour une zone nationale. */
+  maxTilesParNiveau?: number;
   onProgress?: (fait: number, total: number, tuileCourante: string) => void;
   /** Permet d'annuler (set à true depuis l'extérieur). */
   annuler?: { value: boolean };
@@ -241,13 +320,15 @@ export async function telechargerZone(
   opts: OptionsTelechargement
 ): Promise<{ tuiles: number; reussies: number; echecs: number }> {
   const bounds = map.getBounds();
-  const minZoom = Math.max(8, opts.minZoom);
+  const minZoom = Math.max(5, opts.minZoom);
   const maxZoom = Math.min(19, opts.maxZoom);
 
-  const nord = bounds.getNorth();
-  const sud = bounds.getSouth();
-  const est = bounds.getEast();
-  const ouest = bounds.getWest();
+  const zone = opts.bounds ? L.latLngBounds(opts.bounds) : map.getBounds();
+  const nord = zone.getNorth();
+  const sud = zone.getSouth();
+  const est = zone.getEast();
+  const ouest = zone.getWest();
+  const maxTilesParNiveau = opts.maxTilesParNiveau ?? 150;
 
   // Liste (z,x,y) à télécharger.
   const liste: Array<{ z: number; x: number; y: number }> = [];
@@ -258,8 +339,8 @@ export async function telechargerZone(
     const xMax = Math.max(tNW.x, tSE.x);
     const yMin = Math.max(0, Math.min(tNW.y, tSE.y));
     const yMax = Math.max(tNW.y, tSE.y);
-    // Limite de sécurité : 150 tuiles par niveau de zoom max.
-    if ((xMax - xMin + 1) * (yMax - yMin + 1) > 150) {
+    // Limite de sécurité pour éviter un téléchargement accidentel massif.
+    if ((xMax - xMin + 1) * (yMax - yMin + 1) > maxTilesParNiveau) {
       throw new Error(
         `La zone demandée est trop grande au zoom ${z} (${(xMax - xMin + 1) * (yMax - yMin + 1)} tuiles). Zoomez plus près ou réduisez les niveaux.`
       );

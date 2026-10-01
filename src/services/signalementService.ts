@@ -1,7 +1,7 @@
 import api from './api';
 import type {
   SignalementDTO, SignalementRequest, TypeSignalement, StatutSignalement,
-  PhotoSignalementDTO, AuditSignalement, VilleSimple, Page,
+  PhotoSignalementDTO, AuditSignalement, VilleSimple, Page, ProprieteSimple,
 } from '../types/signalement';
 
 export interface StatistiquesSignalement {
@@ -16,6 +16,21 @@ export const signalementApi = {
   types: () => api.get<TypeSignalement[]>('/signalements/types').then((r) => r.data),
   statuts: () => api.get<StatutSignalement[]>('/signalements/statuts').then((r) => r.data),
   villes: () => api.get<VilleSimple[]>('/villes/all').then((r) => r.data),
+
+  // ── Propriétés (référentiel du formulaire de signalement) ──
+  /** Toutes les propriétés (le volume est raisonnable : ~200 lignes). */
+  proprietes: () => api.get<ProprieteSimple[]>('/proprietes/search?search=').then((r) => r.data),
+  /** Recherche filtrée (nom, numéro, zone, lieu, ville). */
+  rechercherProprietes: (search: string) =>
+    api.get<ProprieteSimple[]>('/proprietes/search', { params: { search } }).then((r) => r.data),
+  /** Géométrie du signalement (GeoJSON texte, tableau — [] si non positionné). */
+  geometrieSignalement: (id: string) =>
+    api.get<Array<{ geojson?: string; typeGeometrie?: string; precisionM?: number; source?: string }>>(
+      `/signalements/${id}/geometrie`).then((r) => r.data),
+  /** Géométrie PostGIS d'une propriété (GeoJSON texte, tableau — [] si non localisée). */
+  geometriePropriete: (idPropriete: number) =>
+    api.get<Array<{ geojson?: string; typegeometrie?: string; source?: string }>>(
+      `/proprietes/${idPropriete}/geometrie`).then((r) => r.data),
 
   // ── Liste / détail ──
   lister: (page = 0, size = 20) =>
@@ -44,6 +59,9 @@ export const signalementApi = {
     // sérialiserait le FormData en JSON (fichier perdu → 415 du backend).
     api.post<PhotoSignalementDTO>('/photos', form, {
       headers: { 'Content-Type': 'multipart/form-data' },
+      // Les photos d'appareil (1–4 Mo) dépassent souvent le timeout global
+      // de 8 s sur une connexion terrain → upload annulé avant la fin.
+      timeout: 120000,
     }).then((r) => r.data),
   /** Récupère le contenu binaire AVEC le JWT (les <img> n'envoient pas l'en-tête). */
   contenuPhoto: async (idPhoto: number) => {

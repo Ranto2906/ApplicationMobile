@@ -67,7 +67,7 @@ export default function DescenteTerrainList() {
         db.listerOperationsPending(),
       ]);
       setPending(n);
-      setPendingItems(liste.filter((op) => op.entiteType === 'descente_terrain'));
+      setPendingItems(liste.filter((op) => op.entiteType === 'descente_terrain' && op.action === 'CREATE'));
     } catch { /* base indisponible */ }
   }, []);
 
@@ -86,7 +86,7 @@ export default function DescenteTerrainList() {
       setToast(
         res.total === 0
           ? 'Rien à synchroniser'
-          : `${res.reussis}/${res.total} opération(s) envoyée(s)${res.echecs ? ` — ${res.echecs} échec(s)` : ''}`
+          : `${res.reussis}/${res.total} opération(s) envoyée(s)${res.echecs ? ` — ${res.echecs} échec(s)` : ''}${res.photosRefilees ? ` — ${res.photosRefilees} photo(s) à renvoyer` : ''}`
       );
       setToastColor(res.echecs > 0 ? 'danger' : 'success');
       if (res.reussis > 0) await charger();
@@ -219,7 +219,7 @@ export default function DescenteTerrainList() {
                       </IonBadge>
                     </div>
                     <p style={{ fontSize: 12, color: '#374151', marginTop: 4 }}>
-                      {d.demandeurNom || '—'}{d.dossierNumero ? ` · ${d.dossierNumero}` : ''}
+                      {d.nomPersonne || d.demandeurNom || '—'}{(d.numeroDossier || d.dossierNumero) ? ` · ${d.numeroDossier || d.dossierNumero}` : ''}
                     </p>
                     <p style={{ fontSize: 11, color: '#9ca3af' }}>
                       {formaterDate(d.dateDescente)} · {d.mode === 'offline' ? '📴 Hors ligne' : '🌐 En ligne'}

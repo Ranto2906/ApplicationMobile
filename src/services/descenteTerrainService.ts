@@ -13,23 +13,23 @@ export interface StatistiquesDescente {
 export const descenteTerrainApi = {
   // ── Liste / détail ──
   lister: (page = 0, size = 20) =>
-    api.get<Page<DescenteTerrainDTO>>('/descente-terrain', { params: { page, size } }).then((r) => r.data),
+    api.get<Page<DescenteTerrainDTO>>('/descentes-terrain', { params: { page, size } }).then((r) => r.data),
   rechercher: (q?: string, page = 0, size = 20) =>
-    api.get<Page<DescenteTerrainDTO>>('/descente-terrain/search', { params: { q, page, size } }).then((r) => r.data),
-  trouver: (id: string) => api.get<DescenteTerrainDTO>(`/descente-terrain/${id}`).then((r) => r.data),
-  statistiques: () => api.get<StatistiquesDescente>('/descente-terrain/stats').then((r) => r.data),
+    api.get<Page<DescenteTerrainDTO>>('/descentes-terrain/search', { params: { q, page, size } }).then((r) => r.data),
+  trouver: (id: string) => api.get<DescenteTerrainDTO>(`/descentes-terrain/${id}`).then((r) => r.data),
+  statistiques: () => api.get<StatistiquesDescente>('/descentes-terrain/stats').then((r) => r.data),
 
   // ── CRUD ──
   creer: (r: DescenteTerrainRequest) =>
-    api.post<DescenteTerrainDTO>('/descente-terrain', r).then((resp) => resp.data),
+    api.post<DescenteTerrainDTO>('/descentes-terrain', r).then((resp) => resp.data),
   mettreAJour: (id: string, r: DescenteTerrainRequest) =>
-    api.put<DescenteTerrainDTO>(`/descente-terrain/${id}`, r).then((resp) => resp.data),
-  supprimer: (id: string) => api.delete(`/descente-terrain/${id}`),
+    api.put<DescenteTerrainDTO>(`/descentes-terrain/${id}`, r).then((resp) => resp.data),
+  supprimer: (id: string) => api.delete(`/descentes-terrain/${id}`),
 
   // ── Recherche de dossiers (autocomplete en ligne) ──
-  // NB : la route backend est /descente-terrain/dossiers/search (et non /dossiers/search).
+  // NB : la route backend est /descentes-terrain/dossiers/search (et non /dossiers/search).
   rechercherDossiers: (q: string) =>
-    api.get<DossierSearchResult[]>('/descente-terrain/dossiers/search', { params: { q } }).then((r) => r.data),
+    api.get<DossierSearchResult[]>('/descentes-terrain/dossiers/search', { params: { q } }).then((r) => r.data),
 
   // ── Photos ──
   photos: (entiteId: string) =>
@@ -37,6 +37,9 @@ export const descenteTerrainApi = {
   ajouterPhoto: (form: FormData) =>
     api.post('/photos', form, {
       headers: { 'Content-Type': 'multipart/form-data' },
+      // Les photos d'appareil (1–4 Mo) dépassent souvent le timeout global
+      // de 8 s sur une connexion terrain → upload annulé avant la fin.
+      timeout: 120000,
     }).then((r) => r.data),
   contenuPhoto: async (idPhoto: number) => {
     const r = await api.get(`/photos/${idPhoto}/contenu`, { responseType: 'blob' });

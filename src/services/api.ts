@@ -65,7 +65,11 @@ api.interceptors.response.use(
     const orig = error.config;
     const statut = (error as any)?.response?.status;
     const estReseau = !(error as { response?: unknown })?.response;
-    if (error.response?.status === 401 && !orig._retry) {
+    // Un 401 sur /auth/login (mauvais mot de passe) ou /auth/refresh (refresh
+    // invalide) ne doit PAS déclencher un nouveau refresh : on rejette tel quel.
+    const urlAuth = orig?.url ?? '';
+    const estAppelAuth = /\/auth\/(login|refresh|logout)/.test(urlAuth);
+    if (error.response?.status === 401 && !orig._retry && !estAppelAuth) {
       log('response → 401 sur', orig.url, '(retry:', orig._retry, ')');
       if (isRefreshing) {
         log('response → refresh déjà en cours → mise en file');

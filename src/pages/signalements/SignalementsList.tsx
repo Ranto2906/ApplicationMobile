@@ -67,7 +67,9 @@ export default function SignalementsList() {
         db.listerOperationsPending(),
       ]);
       setPending(n);
-      setPendingItems(liste);
+      // Seules les CRÉATIONS en file sont des brouillons « sur cet appareil » :
+      // les modifications en attente (UPDATE) restent rattachées à leur entité serveur.
+      setPendingItems(liste.filter((op) => op.entiteType === 'signalement' && op.action === 'CREATE'));
     } catch { /* base indisponible */ }
   }, []);
 
@@ -86,7 +88,7 @@ export default function SignalementsList() {
       setToast(
         res.total === 0
           ? 'Rien à synchroniser'
-          : `${res.reussis}/${res.total} signalement(s) envoyé(s)${res.echecs ? ` — ${res.echecs} échec(s)` : ''}`
+          : `${res.reussis}/${res.total} signalement(s) envoyé(s)${res.echecs ? ` — ${res.echecs} échec(s)` : ''}${res.photosRefilees ? ` — ${res.photosRefilees} photo(s) à renvoyer` : ''}`
       );
       setToastColor(res.echecs > 0 ? 'danger' : 'success');
       if (res.reussis > 0) await charger();

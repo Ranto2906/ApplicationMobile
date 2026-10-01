@@ -41,11 +41,14 @@ function uuid(): string {
 
 function patron(chemin: string): { regex: RegExp; cles: string[] } {
   const cles: string[] = [];
+  // NB : le motif `:cle` doit être rempli APRÈS l'échappement des spéciaux, et
+  // sans exiger un antislash devant le `:` — sinon la regex obtenue est littérale
+  // (`^/signalements/:id$`) et AUCUNE route avec paramètre ne correspond jamais.
   const regex = new RegExp(
     '^' +
       chemin
         .replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-        .replace(/\\:(\w+)/g, (_, c: string) => { cles.push(c); return '([^/]+)'; }) +
+        .replace(/\\?:(\w+)/g, (_, c: string) => { cles.push(c); return '([^/]+)'; }) +
       '$'
   );
   return { regex, cles };
@@ -94,8 +97,10 @@ route('POST', '/signalements', async (ctx) => {
 });
 route('PUT', '/signalements/:id', async (ctx) => {
   const { photos, position, ...request } = ctx.corps ?? {};
+  // `idLocal` = id SERVEUR : deux modifications successives du même signalement
+  // remplacent la même ligne (INSERT OR REPLACE) au lieu d'empiler des ops.
   const op: PendingOperation = {
-    idLocal: uuid(),
+    idLocal: ctx.params.id,
     entiteType: 'signalement',
     action: 'UPDATE',
     payload: JSON.stringify({ ...request, idSignalement: ctx.params.id }),
@@ -104,11 +109,25 @@ route('PUT', '/signalements/:id', async (ctx) => {
     createdAt: new Date().toISOString(),
   };
   await db.ajouterOperationPending(op);
+  // Miroir local de la géométrie (comme en création) : la carte du détail affiche
+  // la position modifiée, et la synchro marque la ligne envoyée (synchronise=1).
+  const req = request as SignalementRequest;
+  if (req?.geometrie?.geojson) {
+    await db.sauverGeometrieLocale({
+      entiteType: 'signalement',
+      entiteId: ctx.params.id,
+      typeGeometrie: req.geometrie.typeGeometrie || 'Point',
+      geojson: req.geometrie.geojson,
+      precisionM: req.geometrie.precisionM ?? null,
+      source: req.geometrie.source ?? null,
+      synchronise: 0,
+    }).catch(() => undefined);
+  }
   return { idLocal: op.idLocal, enAttente: true, message: 'Modification enregistrée localement — à synchroniser' };
 });
 
 // ── Descente Terrain (écritures hors-ligne) ──
-route('POST', '/descente-terrain', async (ctx) => {
+route('POST', '/descentes-terrain', async (ctx) => {
   const { photos, position, ...request } = ctx.corps ?? {};
   const op: PendingOperation = {
     idLocal: uuid(),
@@ -122,10 +141,11 @@ route('POST', '/descente-terrain', async (ctx) => {
   await db.ajouterOperationPending(op);
   return { idLocal: op.idLocal, enAttente: true, message: 'Descente enregistrée localement — à synchroniser' };
 });
-route('PUT', '/descente-terrain/:id', async (ctx) => {
+route('PUT', '/descentes-terrain/:id', async (ctx) => {
   const { photos, position, ...request } = ctx.corps ?? {};
+  // idLocal = id serveur : une seule opération en file par descente modifiée.
   const op: PendingOperation = {
-    idLocal: uuid(),
+    idLocal: ctx.params.id,
     entiteType: 'descente_terrain',
     action: 'UPDATE',
     payload: JSON.stringify({ ...request, idDescente: ctx.params.id }),

@@ -32,6 +32,15 @@ export default function TabLayout() {
             exact
             component={SignalementCreate}
           />
+          {/* Édition : même formulaire que la création, pré-rempli (mode `modifier`). */}
+          <Route
+            path="/tab/signalements/modifier/:id"
+            exact
+            render={({ match }) => {
+              const { id } = match.params as { id: string };
+              return <SignalementCreate key={`sig-edit-${id}`} />;
+            }}
+          />
           {/* NB : sans <Switch>, les routes exactes qui se chevauchent (ici
               /nouveau et /:id) se montent TOUTES LES DEUX. Le garde ci-dessous
               empêche la page détail de s'empiler derrière « Nouveau signalement »
@@ -41,18 +50,26 @@ export default function TabLayout() {
             exact
             render={({ match }) => {
               const { id } = match.params as { id: string };
-              if (id === 'nouveau') return null;
+              if (id === 'nouveau' || id === 'modifier') return null;
               return <SignalementDetail key={id} />;
             }}
           />
           <Route path="/tab/descente-terrain" component={DescenteTerrainList} exact />
           <Route path="/tab/descente-terrain/nouveau" component={DescenteTerrainCreate} exact />
           <Route
+            path="/tab/descente-terrain/modifier/:id"
+            exact
+            render={({ match }) => {
+              const { id } = match.params as { id: string };
+              return <DescenteTerrainCreate key={`dt-edit-${id}`} />;
+            }}
+          />
+          <Route
             path="/tab/descente-terrain/:id"
             exact
             render={({ match }) => {
               const { id } = match.params as { id: string };
-              if (id === 'nouveau') return null;
+              if (id === 'nouveau' || id === 'modifier') return null;
               return <DescenteTerrainDetail key={id} />;
             }}
           />

@@ -5,15 +5,16 @@ import {
   IonSpinner, IonToast, IonIcon, IonSegment, IonSegmentButton, IonList,
 } from '@ionic/react';
 import { chevronBack, cameraOutline, imagesOutline, addOutline, closeCircleOutline } from 'ionicons/icons';
-import { useHistory } from 'react-router-dom';
+import { useHistory, useParams } from 'react-router-dom';
 import { Camera, CameraResultType, CameraSource } from '@capacitor/camera';
 import { descenteTerrainApi } from '../../services/descenteTerrainService';
-import { db } from '../../services/db';
+import { db, type PendingOperation } from '../../services/db';
 import localApi from '../../services/localApi';
-import { synchroniserSignalements } from '../../services/syncService';
+import { synchroniserSignalements, refilerPhotosEchouees } from '../../services/syncService';
 import { useOnline } from '../../hooks/useOnline';
 import type {
   DossierSearchResult, StatutConstat, DescenteTerrainRequest, ParcelleSnapshot,
+  DescenteTerrainDTO,
 } from '../../types/descenteTerrain';
 
 const STATUTS_CONSTAT: StatutConstat[] = [
@@ -29,6 +30,21 @@ interface ParcelleForm {
 export default function DescenteTerrainCreate() {
   const history = useHistory();
   const online = useOnline();
+
+  // ── Mode édition : /tab/descente-terrain/modifier/:id ──
+  const { id: idModification } = useParams<{ id?: string }>();
+  const modeEdition = !!idModification;
+  const [chargementEdition, setChargementEdition] = useState(modeEdition);
+  /** Vrai si l'id désigne un brouillon local (CREATE en file, jamais synchronisé). */
+  const [brouillonLocal, setBrouillonLocal] = useState(false);
+  /** Photos déjà présentes sur le serveur (affichage seul). */
+  const [photosServeur, setPhotosServeur] = useState<string[]>([]);
+  // Capacité locale (SQLite) : natif, ou jeep-sqlite disponible sur le web.
+  const sqliteOk = !!(window as any).__SEIMAD_WEB_SQLITE_AVAILABLE__
+    || /capacitor|ionic/i.test(navigator.userAgent);
+  // En édition d'une descente SERVEUR, les infos dossier sont des snapshots
+  // liés au dossier rattaché : elles ne sont pas modifiables depuis le mobile.
+  const dossierVerrouille = modeEdition && !brouillonLocal;
 
   // Mode online/offline
   const [mode, setMode] = useState<'online' | 'offline'>(online ? 'online' : 'offline');
@@ -59,7 +75,7 @@ export default function DescenteTerrainCreate() {
   // Sauvegarde
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState('');
-  const [toastColor, setToastColor] = useState<'success' | 'danger'>('success');
+  const [toastColor, setToastColor] = useState<'success' | 'danger' | 'warning'>('success');
 
   // Sync auto
   const [syncing, setSyncing] = useState(false);
@@ -85,6 +101,98 @@ export default function DescenteTerrainCreate() {
       }
     })();
   }, [online, syncing]);
+
+  // ── Édition : pré-remplissage du formulaire ──
+  /** Pré-remplit le formulaire depuis un payload (brouillon / UPDATE en file). */
+  const appliquerPayload = useCallback((payload: DescenteTerrainRequest) => {
+    if (payload.dateDescente) setDateDescente(payload.dateDescente.slice(0, 10));
+    if (payload.statutConstat) setStatutConstat(payload.statutConstat);
+    setObservation(payload.observation || '');
+    if (payload.mode) setMode(payload.mode);
+    setDossierNumero(payload.dossierNumero || '');
+    setDemandeurNom(payload.demandeurNom || '');
+    setDemandeurContact(payload.demandeurContact || '');
+    setDossierSuperficie(payload.dossierSuperficie != null ? String(payload.dossierSuperficie) : '');
+    setDossierPropriete(payload.dossierPropriete || '');
+    setDossierVille(payload.dossierVille || '');
+    setParcelles((payload.dossierParcelles || []).map((p) => ({
+      numeroLot: p.numeroLot || '',
+      superficieM2: p.superficieM2 != null ? String(p.superficieM2) : '',
+    })));
+  }, []);
+
+  /** Pré-remplit le formulaire depuis le DTO serveur (snapshot = relations dossier). */
+  const appliquerDto = useCallback((d: DescenteTerrainDTO) => {
+    if (d.dateDescente) setDateDescente(d.dateDescente.slice(0, 10));
+    if (d.statutConstat && STATUTS_CONSTAT.includes(d.statutConstat)) setStatutConstat(d.statutConstat);
+    setObservation(d.observation || '');
+    if (d.mode) setMode(d.mode);
+    setDossierNumero(d.numeroDossier || '');
+    setDemandeurNom(d.nomPersonne || '');
+    setDemandeurContact(d.contactPersonne || '');
+    setDossierSuperficie(d.superficieM2 != null ? String(d.superficieM2) : '');
+    setDossierPropriete(d.numeroPropriete || '');
+    setDossierVille(d.nomVille || '');
+    setParcelles(d.numeroLot
+      ? [{ numeroLot: d.numeroLot, superficieM2: d.superficieM2 != null ? String(d.superficieM2) : '' }]
+      : []);
+  }, []);
+
+  // Chargement de la descente à éditer : file locale d'abord, puis serveur.
+  // `editionChargeeRef` évite de re-charger (et d'écraser les saisies) quand le
+  // réseau bascule pendant l'édition.
+  const editionChargeeRef = useRef(false);
+  useEffect(() => {
+    if (!idModification || editionChargeeRef.current) return;
+    let actif = true;
+    (async () => {
+      setChargementEdition(true);
+      try {
+        let op: PendingOperation | null = null;
+        try {
+          op = await db.trouverOperationPending(idModification);
+        } catch (e) {
+          console.warn('[SEIMAD:DescenteEdit] base locale indisponible', e);
+        }
+        if (!actif) return;
+        if (op && op.entiteType === 'descente_terrain') {
+          appliquerPayload(JSON.parse(op.payload) as DescenteTerrainRequest);
+          setBrouillonLocal(op.action === 'CREATE');
+          try { setPhotos(JSON.parse(op.photos || '[]')); } catch { /* photos illisibles */ }
+          editionChargeeRef.current = true;
+          return;
+        }
+
+        if (!online) {
+          setToast("Hors-ligne : cette descente n'est pas disponible sur cet appareil");
+          setToastColor('danger');
+          return;
+        }
+
+        const d = await descenteTerrainApi.trouver(idModification);
+        if (!actif) return;
+        appliquerDto(d);
+
+        const ph = await descenteTerrainApi.photos(idModification).catch(() => []);
+        const liste = Array.isArray(ph) ? ph : [];
+        const urls = await Promise.all(
+          liste
+            .filter((p: { idPhoto?: number }) => p.idPhoto != null)
+            .map((p: { idPhoto?: number }) => descenteTerrainApi.contenuPhoto(p.idPhoto!).catch(() => null)),
+        );
+        if (actif) setPhotosServeur(urls.filter((u): u is string => !!u));
+        editionChargeeRef.current = true;
+      } catch {
+        if (actif) {
+          setToast('Descente introuvable');
+          setToastColor('danger');
+        }
+      } finally {
+        if (actif) setChargementEdition(false);
+      }
+    })();
+    return () => { actif = false; };
+  }, [idModification, online, appliquerPayload, appliquerDto]);
 
   // ── Recherche de dossiers (online) ──
   const rechercherDossiers = useCallback(async (q: string) => {
@@ -186,12 +294,12 @@ export default function DescenteTerrainCreate() {
       setToastColor('danger');
       return;
     }
-    if (mode === 'online' && !dossierSelected && !dossierNumero) {
+    if (mode === 'online' && !dossierSelected && !dossierNumero && !modeEdition) {
       setToast('Veuillez rechercher et sélectionner un dossier');
       setToastColor('danger');
       return;
     }
-    if (!demandeurNom.trim()) {
+    if (!demandeurNom.trim() && !modeEdition) {
       setToast('Veuillez saisir le nom du demandeur');
       setToastColor('danger');
       return;
@@ -235,11 +343,107 @@ export default function DescenteTerrainCreate() {
         datePrise: p.datePrise,
       }));
 
+      // ── Mode édition ───────────────────────────────────────────────
+      const opEdition = modeEdition && idModification
+        ? await db.trouverOperationPending(idModification).catch(() => null)
+        : null;
+      // Cas limite : le brouillon vient d'être synchronisé pendant l'édition →
+      // plus d'id local, on repasse sur la création classique.
+      if (modeEdition && idModification && !(brouillonLocal && !opEdition)) {
+        const id = idModification;
+
+        // a) Brouillon local (jamais synchronisé) : réécriture de la même ligne.
+        if (brouillonLocal && opEdition) {
+          await db.ajouterOperationPending({
+            ...opEdition,
+            payload: JSON.stringify(request),
+            photos: JSON.stringify(photoMetas),
+            position: JSON.stringify({}),
+          });
+          setToast('Brouillon modifié — pris en compte à la prochaine synchronisation');
+          setToastColor('success');
+          setTimeout(() => history.replace(`/tab/descente-terrain/${id}`), 1500);
+          return;
+        }
+
+        // b) En ligne → PUT immédiat.
+        if (online) {
+          try {
+            await descenteTerrainApi.mettreAJour(id, request);
+            if (opEdition?.action === 'UPDATE') {
+              await db.supprimerOperationPending(opEdition.idLocal).catch(() => undefined);
+            }
+            let photosEnvoyees = 0;
+            const echouees: typeof photoMetas = [];
+            for (const p of photoMetas) {
+              try {
+                const form = new FormData();
+                form.append('fichier', dataUrlVersBlob(p.dataUrl), `descente_${Date.now()}.png`);
+                form.append('entiteType', 'descente_terrain');
+                form.append('entiteId', id);
+                if (p.typePhoto) form.append('typePhoto', p.typePhoto);
+                if (p.datePrise) form.append('datePrise', p.datePrise);
+                await descenteTerrainApi.ajouterPhoto(form);
+                photosEnvoyees += 1;
+              } catch {
+                echouees.push(p);
+              }
+            }
+            // Photos en échec → re-file locale : renvoyées à la prochaine synchro.
+            if (echouees.length > 0) {
+              await refilerPhotosEchouees('descente_terrain', id, request, echouees).catch(() => undefined);
+            }
+            setToast(
+              'Descente modifiée ✔' +
+              (echouees.length > 0
+                ? ` — ${echouees.length}/${photoMetas.length} photo(s) en attente de renvoi`
+                : photosEnvoyees > 0 ? ` — ${photosEnvoyees} photo(s) envoyée(s)` : '')
+            );
+            setToastColor(echouees.length > 0 ? 'warning' : 'success');
+            setTimeout(() => history.replace(`/tab/descente-terrain/${id}`), 1800);
+            return;
+          } catch (e) {
+            console.warn('Échec API, repli file locale', e);
+          }
+        }
+
+        // c) Hors-ligne (ou échec API) → file locale : PUT rejoué à la synchro.
+        if (!sqliteOk) {
+          setToast(
+            online
+              ? 'Impossible d’enregistrer : le stockage local n’est pas disponible. Réessayez en ligne.'
+              : 'Impossible d’enregistrer : hors-ligne et stockage local non disponible. Connectez-vous puis réessayez.'
+          );
+          setToastColor('danger');
+          return;
+        }
+        // idLocal = id serveur → INSERT OR REPLACE : on conserve les photos déjà en file.
+        const photosEnFile = (() => {
+          const anciennes = (() => {
+            try {
+              return opEdition?.action === 'UPDATE'
+                ? (JSON.parse(opEdition.photos || '[]') as typeof photoMetas)
+                : [];
+            } catch { return []; }
+          })();
+          const vus = new Set(anciennes.map((p) => p.dataUrl));
+          return [...anciennes, ...photoMetas.filter((p) => !vus.has(p.dataUrl))];
+        })();
+        await localApi.put(`/descentes-terrain/${id}`, {
+          ...request,
+          photos: photosEnFile,
+        });
+        setToast('Modification enregistrée localement — synchronisation au retour du réseau');
+        setToastColor('success');
+        setTimeout(() => history.replace(`/tab/descente-terrain/${id}`), 1500);
+        return;
+      }
+
       if (online) {
         try {
           const cree = await descenteTerrainApi.creer(request);
           let photosEnvoyees = 0;
-          let photosEnEchec = 0;
+          const echouees: typeof photoMetas = [];
           for (const p of photoMetas) {
             try {
               const form = new FormData();
@@ -252,16 +456,20 @@ export default function DescenteTerrainCreate() {
               await descenteTerrainApi.ajouterPhoto(form);
               photosEnvoyees += 1;
             } catch {
-              photosEnEchec += 1;
+              echouees.push(p);
             }
+          }
+          // Photos en échec → re-file locale : renvoyées à la prochaine synchro.
+          if (echouees.length > 0) {
+            await refilerPhotosEchouees('descente_terrain', cree.idDescente, request, echouees).catch(() => undefined);
           }
           setToast(
             `Descente ${cree.reference || ''} créée ✔` +
-            (photosEnEchec > 0
-              ? ` — ${photosEnEchec}/${photoMetas.length} photo(s) non envoyée(s)`
+            (echouees.length > 0
+              ? ` — ${echouees.length}/${photoMetas.length} photo(s) en attente de renvoi`
               : photosEnvoyees > 0 ? ` — ${photosEnvoyees} photo(s) envoyée(s)` : '')
           );
-          setToastColor(photosEnEchec > 0 ? 'danger' : 'success');
+          setToastColor(echouees.length > 0 ? 'warning' : 'success');
           setTimeout(() => history.replace('/tab/descente-terrain'), 2600);
           return;
         } catch (e) {
@@ -276,7 +484,7 @@ export default function DescenteTerrainCreate() {
         setToastColor('danger');
         return;
       }
-      await localApi.post('/descente-terrain', { ...request, photos: photoMetas });
+      await localApi.post('/descentes-terrain', { ...request, photos: photoMetas });
       setToast('Enregistré localement — synchronisation au retour du réseau');
       setToastColor('success');
       setTimeout(() => history.replace('/tab/descente-terrain'), 1500);
@@ -289,22 +497,40 @@ export default function DescenteTerrainCreate() {
     }
   }, [mode, dateDescente, statutConstat, observation, dossierNumero, demandeurNom,
       demandeurContact, dossierSuperficie, dossierPropriete, parcelles, dossierVille,
-      dossierSelected, photos, online, history]);
+      dossierSelected, photos, online, history,
+      modeEdition, idModification, brouillonLocal, sqliteOk]);
 
   return (
     <IonPage>
       <IonHeader>
         <IonToolbar style={{ '--background': '#0d435d', '--color': 'white' }}>
           <IonButtons slot="start">
-            <IonButton onClick={() => history.replace('/tab/descente-terrain')}>
+            <IonButton onClick={() => history.replace(
+              modeEdition && idModification ? `/tab/descente-terrain/${idModification}` : '/tab/descente-terrain'
+            )}>
               <IonIcon icon={chevronBack} />
             </IonButton>
           </IonButtons>
-          <IonTitle>Nouvelle descente</IonTitle>
+          <IonTitle>{modeEdition ? 'Modifier la descente' : 'Nouvelle descente'}</IonTitle>
         </IonToolbar>
       </IonHeader>
 
       <IonContent className="ion-padding">
+        {modeEdition && chargementEdition && (
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10, padding: '18px 0', color: '#6b7280', fontSize: 13 }}>
+            <IonSpinner name="dots" style={{ width: 18, height: 18 }} />
+            Chargement de la descente…
+          </div>
+        )}
+        {modeEdition && !chargementEdition && (
+          <div style={{
+            background: '#eef2f7', border: '1px solid #cbd5e1', color: '#334155',
+            borderRadius: 10, padding: '10px 12px', fontSize: 12.5, lineHeight: 1.5, marginBottom: 14,
+          }}>
+            ✏️ <b>Mode modification</b> — modifiez puis enregistrez. Seules les nouvelles photos
+            ajoutées ici seront envoyées ; les photos déjà jointes restent sur le serveur.
+          </div>
+        )}
         {!online && (
           <div style={{
             background: '#fff8e1', border: '1px solid #f0e0a8', color: '#8a6d1d',
@@ -315,18 +541,22 @@ export default function DescenteTerrainCreate() {
           </div>
         )}
 
-        {/* 1 · Mode de fonctionnement */}
-        <div style={{ fontSize: 12, fontWeight: 700, color: '#6b7280', textTransform: 'uppercase', letterSpacing: 0.5, margin: '14px 0 8px' }}>
-          1 · Mode de fonctionnement
-        </div>
-        <IonSegment value={mode} onIonChange={(e) => setMode(e.detail.value as 'online' | 'offline')}>
-          <IonSegmentButton value="online" disabled={!online}>
-            <IonLabel>🌐 En ligne</IonLabel>
-          </IonSegmentButton>
-          <IonSegmentButton value="offline">
-            <IonLabel>📴 Hors ligne</IonLabel>
-          </IonSegmentButton>
-        </IonSegment>
+        {/* 1 · Mode de fonctionnement (masqué en édition : mode figé) */}
+        {!modeEdition && (
+          <>
+            <div style={{ fontSize: 12, fontWeight: 700, color: '#6b7280', textTransform: 'uppercase', letterSpacing: 0.5, margin: '14px 0 8px' }}>
+              1 · Mode de fonctionnement
+            </div>
+            <IonSegment value={mode} onIonChange={(e) => setMode(e.detail.value as 'online' | 'offline')}>
+              <IonSegmentButton value="online" disabled={!online}>
+                <IonLabel>🌐 En ligne</IonLabel>
+              </IonSegmentButton>
+              <IonSegmentButton value="offline">
+                <IonLabel>📴 Hors ligne</IonLabel>
+              </IonSegmentButton>
+            </IonSegment>
+          </>
+        )}
 
         {/* 2 · Recherche dossier (online uniquement) */}
         {mode === 'online' && (
@@ -400,17 +630,22 @@ export default function DescenteTerrainCreate() {
         <div style={{ fontSize: 12, fontWeight: 700, color: '#6b7280', textTransform: 'uppercase', letterSpacing: 0.5, margin: '14px 0 8px' }}>
           {mode === 'online' ? '3' : '2'} · Informations du dossier
         </div>
+        {dossierVerrouille && (
+          <div style={{ fontSize: 11.5, color: '#6b7280', margin: '-4px 2px 8px' }}>
+            🔒 Informations issues du dossier rattaché — modifiables depuis le web.
+          </div>
+        )}
         <IonItem lines="inset" style={{ '--background': 'transparent' }}>
           <IonLabel position="stacked" style={{ fontSize: 12, color: '#6b7280' }}>Numéro dossier</IonLabel>
-          <IonInput value={dossierNumero} onIonInput={(e) => setDossierNumero(String(e.detail.value || ''))} placeholder="Ex: DOS-2026-0001" />
+          <IonInput value={dossierNumero} disabled={dossierVerrouille} onIonInput={(e) => setDossierNumero(String(e.detail.value || ''))} placeholder="Ex: DOS-2026-0001" />
         </IonItem>
         <IonItem lines="inset" style={{ '--background': 'transparent' }}>
-          <IonLabel position="stacked" style={{ fontSize: 12, color: '#6b7280' }}>Nom du demandeur *</IonLabel>
-          <IonInput value={demandeurNom} onIonInput={(e) => setDemandeurNom(String(e.detail.value || ''))} placeholder="Nom complet" />
+          <IonLabel position="stacked" style={{ fontSize: 12, color: '#6b7280' }}>Nom du demandeur {!dossierVerrouille && '*'}</IonLabel>
+          <IonInput value={demandeurNom} disabled={dossierVerrouille} onIonInput={(e) => setDemandeurNom(String(e.detail.value || ''))} placeholder="Nom complet" />
         </IonItem>
         <IonItem lines="inset" style={{ '--background': 'transparent' }}>
           <IonLabel position="stacked" style={{ fontSize: 12, color: '#6b7280' }}>Contact</IonLabel>
-          <IonInput value={demandeurContact} onIonInput={(e) => setDemandeurContact(String(e.detail.value || ''))} placeholder="Téléphone / email" />
+          <IonInput value={demandeurContact} disabled={dossierVerrouille} onIonInput={(e) => setDemandeurContact(String(e.detail.value || ''))} placeholder="Téléphone / email" />
         </IonItem>
 
         {/* Propriété + parcelles liées */}
@@ -419,15 +654,15 @@ export default function DescenteTerrainCreate() {
         </div>
         <IonItem lines="inset" style={{ '--background': 'transparent' }}>
           <IonLabel position="stacked" style={{ fontSize: 12, color: '#6b7280' }}>Propriété</IonLabel>
-          <IonInput value={dossierPropriete} onIonInput={(e) => setDossierPropriete(String(e.detail.value || ''))} placeholder="N° / nom de la propriété" />
+          <IonInput value={dossierPropriete} disabled={dossierVerrouille} onIonInput={(e) => setDossierPropriete(String(e.detail.value || ''))} placeholder="N° / nom de la propriété" />
         </IonItem>
         <IonItem lines="inset" style={{ '--background': 'transparent' }}>
           <IonLabel position="stacked" style={{ fontSize: 12, color: '#6b7280' }}>Superficie totale (m²)</IonLabel>
-          <IonInput type="number" inputmode="decimal" value={dossierSuperficie} onIonInput={(e) => setDossierSuperficie(String(e.detail.value || ''))} placeholder="0" />
+          <IonInput type="number" inputmode="decimal" value={dossierSuperficie} disabled={dossierVerrouille} onIonInput={(e) => setDossierSuperficie(String(e.detail.value || ''))} placeholder="0" />
         </IonItem>
         <IonItem lines="inset" style={{ '--background': 'transparent' }}>
           <IonLabel position="stacked" style={{ fontSize: 12, color: '#6b7280' }}>Ville</IonLabel>
-          <IonInput value={dossierVille} onIonInput={(e) => setDossierVille(String(e.detail.value || ''))} placeholder="Nom de la ville" />
+          <IonInput value={dossierVille} disabled={dossierVerrouille} onIonInput={(e) => setDossierVille(String(e.detail.value || ''))} placeholder="Nom de la ville" />
         </IonItem>
 
         {parcelles.length > 0 && (
@@ -439,6 +674,7 @@ export default function DescenteTerrainCreate() {
               }}>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
                   <b style={{ fontSize: 12, color: '#374151' }}>Parcelle {i + 1}</b>
+                  {!dossierVerrouille && (
                   <button
                     onClick={() => retirerParcelle(i)}
                     style={{ background: 'transparent', border: 'none', color: '#dc2626', fontSize: 16, cursor: 'pointer', padding: 0, lineHeight: 1 }}
@@ -446,11 +682,13 @@ export default function DescenteTerrainCreate() {
                   >
                     <IonIcon icon={closeCircleOutline} />
                   </button>
+                  )}
                 </div>
                 <IonItem lines="none" style={{ '--background': 'transparent', '--padding-start': 0 }}>
                   <IonLabel position="stacked" style={{ fontSize: 11, color: '#6b7280' }}>N° de lot *</IonLabel>
                   <IonInput
                     value={p.numeroLot}
+                    disabled={dossierVerrouille}
                     onIonInput={(e) => majParcelle(i, 'numeroLot', String(e.detail.value || ''))}
                     placeholder="Ex: Lot 12A"
                   />
@@ -461,6 +699,7 @@ export default function DescenteTerrainCreate() {
                     type="number"
                     inputmode="decimal"
                     value={p.superficieM2}
+                    disabled={dossierVerrouille}
                     onIonInput={(e) => majParcelle(i, 'superficieM2', String(e.detail.value || ''))}
                     placeholder="0"
                   />
@@ -469,10 +708,12 @@ export default function DescenteTerrainCreate() {
             ))}
           </div>
         )}
-        <IonButton expand="block" fill="outline" onClick={ajouterParcelle} style={{ '--border-radius': 10 }}>
-          <IonIcon icon={addOutline} slot="start" />
-          Ajouter une parcelle liée à cette propriété
-        </IonButton>
+        {!dossierVerrouille && (
+          <IonButton expand="block" fill="outline" onClick={ajouterParcelle} style={{ '--border-radius': 10 }}>
+            <IonIcon icon={addOutline} slot="start" />
+            Ajouter une parcelle liée à cette propriété
+          </IonButton>
+        )}
 
         {/* 3/4 · Détails de la descente */}
         <div style={{ fontSize: 12, fontWeight: 700, color: '#6b7280', textTransform: 'uppercase', letterSpacing: 0.5, margin: '18px 0 8px' }}>
@@ -508,8 +749,21 @@ export default function DescenteTerrainCreate() {
 
         {/* 5/6 · Photos */}
         <div style={{ fontSize: 12, fontWeight: 700, color: '#6b7280', textTransform: 'uppercase', letterSpacing: 0.5, margin: '14px 0 8px' }}>
-          {mode === 'online' ? '6' : '5'} · Photos du constat — {photos.length}
+          {mode === 'online' ? '6' : '5'} · Photos du constat — {photosServeur.length + photos.length}
         </div>
+        {photosServeur.length > 0 && (
+          <div style={{ marginBottom: 10 }}>
+            <div style={{ fontSize: 11.5, color: '#6b7280', marginBottom: 6 }}>
+              Déjà jointes à la descente ({photosServeur.length}) — conservées telles quelles
+            </div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+              {photosServeur.map((src, i) => (
+                <img key={`srv-${i}`} src={src} alt="photo existante"
+                  style={{ width: 84, height: 84, objectFit: 'cover', borderRadius: 10, border: '1px solid #e2e8f0' }} />
+              ))}
+            </div>
+          </div>
+        )}
         {photos.length > 0 && (
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 10 }}>
             {photos.map((p, i) => (
@@ -541,11 +795,13 @@ export default function DescenteTerrainCreate() {
         {/* Sauvegarde */}
         <IonButton
           expand="block"
-          disabled={saving}
+          disabled={saving || chargementEdition}
           onClick={enregistrer}
           style={{ '--border-radius': 12, height: 50, fontWeight: 700, marginTop: 24, marginBottom: 30, '--background': '#176b87' }}
         >
-          {saving ? <IonSpinner name="crescent" /> : '💾 Enregistrer la descente'}
+          {saving
+            ? <IonSpinner name="crescent" />
+            : modeEdition ? '💾 Enregistrer les modifications' : '💾 Enregistrer la descente'}
         </IonButton>
 
         {pendingCount > 0 && (

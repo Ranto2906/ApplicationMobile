@@ -6,7 +6,7 @@ import {
 } from '@ionic/react';
 import {
   syncOutline, cloudOfflineOutline, megaphone,
-  list, shieldCheckmark, cameraOutline, add, chevronForward, logOutOutline,
+  cameraOutline, add, chevronForward, logOutOutline,
 } from 'ionicons/icons';
 import { useAuth } from '../context/AuthContext';
 import { useHistory } from 'react-router-dom';
@@ -15,6 +15,8 @@ import { signalementApi } from '../services/signalementService';
 import { useOnline } from '../hooks/useOnline';
 import localApi from '../services/localApi';
 import type { SignalementDTO } from '../types/signalement';
+import { descenteTerrainApi } from '../services/descenteTerrainService';
+import type { DescenteTerrainDTO } from '../types/descenteTerrain';
 
 const COULEURS_STATUT: Record<string, string> = {
   nouveau: '#176b87', 'en attente': '#b7791f', 'en cours': '#176b87',
@@ -30,6 +32,18 @@ function formaterDate(d?: string): string {
   return d
     ? new Date(d).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' })
     : '—';
+}
+
+const COULEURS_DESCENTE: Record<string, string> = {
+  conforme: '#059669',
+  'non conforme': '#dc2626',
+  'en attente': '#b7791f',
+  'occupation illicite': '#c53030',
+  'construction illegale': '#7c3aed',
+};
+
+function couleurDescente(statut?: string): string {
+  return COULEURS_DESCENTE[(statut || '').toLowerCase()] || '#6b7280';
 }
 
 interface AccueilItem {
@@ -102,6 +116,7 @@ export default function Dashboard() {
 
   const [stats, setStats] = useState({ signalements: 0, photos: 0, enAttente: 0 });
   const [derniers, setDerniers] = useState<AccueilItem[]>([]);
+  const [dernieresDescentes, setDernieresDescentes] = useState<DescenteTerrainDTO[]>([]);
   const [chargement, setChargement] = useState(true);
   const [syncing, setSyncing] = useState(false);
   const [toast, setToast] = useState('');
@@ -116,12 +131,15 @@ export default function Dashboard() {
   // l'API locale). En ligne : serveur d'abord, repli local en cas d'échec.
   const charger = useCallback(async () => {
     try {
-      const [statsLocales, locaux, serveur] = await Promise.all([
+      const [statsLocales, locaux, serveur, descentes] = await Promise.all([
         localApi.get<{ enAttente: number; photos: number }>('/dashboard/stats').catch(() => ({ enAttente: 0, photos: 0 })),
         chargerLocaux(),
         online
           ? chargerServeur()
           : Promise.resolve({ items: [] as AccueilItem[], total: 0 }),
+        online
+          ? descenteTerrainApi.lister(0, 8).catch(() => ({ content: [] as DescenteTerrainDTO[] }))
+          : Promise.resolve({ content: [] as DescenteTerrainDTO[] }),
       ]);
       // Un signalement encore dans la file compte une fois : le serveur ne le
       // connaît pas encore (aucun pull), pas de risque de doublon.
@@ -142,6 +160,7 @@ export default function Dashboard() {
         enAttente: statsLocales.enAttente,
       });
       setDerniers(derniersFusionnes);
+      setDernieresDescentes(descentes.content ?? []);
     } catch {
       // base locale indisponible : statistiques à zéro, écran quand même affiché
     } finally {
@@ -161,7 +180,8 @@ export default function Dashboard() {
         res.total === 0
           ? '✔ Rien à synchroniser — données locales déjà envoyées'
           : `✔ ${res.reussis}/${res.total} signalement(s) envoyé(s) au serveur` +
-            (res.echecs ? ` — ${res.echecs} échec(s)` : '')
+            (res.echecs ? ` — ${res.echecs} échec(s)` : '') +
+            (res.photosRefilees ? ` — ${res.photosRefilees} photo(s) en attente de renvoi` : '')
       );
       setToastColor(res.echecs > 0 ? 'danger' : 'success');
     } catch {
@@ -183,14 +203,12 @@ export default function Dashboard() {
     history.replace('/login');
   };
 
-  const accesRapides = useMemo(() => [
-    { icon: megaphone, label: 'Signalements', color: '#c53030', tab: '/tab/signalements', badge: stats.enAttente > 0 ? `${stats.enAttente} en attente` : '' },
-    { icon: list, label: 'Journal', color: '#10b981', tab: '/tab/journal' },
-    { icon: shieldCheckmark, label: 'Profil', color: '#8b5cf6', tab: '/tab/settings' },
-  ], [stats.enAttente]);
-
   const ouvrirDetail = useCallback((item: AccueilItem) => {
     history.push(`/tab/signalements/${item.id}`);
+  }, [history]);
+
+  const ouvrirDescente = useCallback((item: DescenteTerrainDTO) => {
+    history.push(`/tab/descente-terrain/${item.idDescente}`);
   }, [history]);
 
   return (
@@ -341,39 +359,39 @@ export default function Dashboard() {
           </IonList>
         )}
 
-        {/* ── Accès rapides (conservés) ── */}
+        {/* ── Dernières descentes terrain ── */}
         <h3 style={{ fontSize: 15, fontWeight: 700, margin: '16px 12px 8px', color: '#374151' }}>
-          Accès rapides
+          Dernières descentes
         </h3>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8, margin: '0 12px 24px' }}>
-          {accesRapides.map((card) => (
-            <IonCard
-              key={card.label}
-              button
-              onClick={() => history.push(card.tab)}
-              style={{ borderRadius: 12, margin: 0, cursor: 'pointer' }}
-            >
-              <IonCardContent style={{ textAlign: 'center', padding: 14 }}>
-                <div style={{
-                  width: 42, height: 42, borderRadius: 12, margin: '0 auto 6px',
-                  background: `${card.color}15`, display: 'flex',
-                  alignItems: 'center', justifyContent: 'center',
-                }}>
-                  <IonIcon icon={card.icon} style={{ fontSize: 22, color: card.color }} />
-                </div>
-                <IonLabel style={{ fontSize: 12, fontWeight: 600 }}>{card.label}</IonLabel>
-                {'badge' in card && card.badge ? (
-                  <div style={{
-                    marginTop: 4, fontSize: 9, fontWeight: 700, background: `${card.color}20`,
-                    color: card.color, borderRadius: 20, padding: '2px 8px', display: 'inline-block',
-                  }}>
-                    {card.badge}
+        {chargement ? (
+          <div style={{ textAlign: 'center', padding: 30 }}><IonSpinner name="crescent" /></div>
+        ) : dernieresDescentes.length === 0 ? (
+          <div style={{ textAlign: 'center', padding: 30, color: '#9ca3af', fontSize: 13 }}>
+            <div style={{ fontSize: 34, marginBottom: 6 }}>📋</div>
+            Aucune descente pour le moment.
+          </div>
+        ) : (
+          <IonList style={{ margin: '0 12px 24px', border: '1px solid #e5e7eb', borderRadius: 12, overflow: 'hidden' }}>
+            {dernieresDescentes.map((item) => (
+              <IonItem key={item.idDescente} button detail={false} onClick={() => ouvrirDescente(item)} lines="inset">
+                <IonLabel>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                    <b style={{ fontSize: 13.5 }}>{item.reference || 'Descente terrain'}</b>
+                    <IonBadge style={{ background: couleurDescente(item.statutConstat), color: '#fff', fontSize: 9.5 }}>
+                      {item.statutConstat}
+                    </IonBadge>
                   </div>
-                ) : null}
-              </IonCardContent>
-            </IonCard>
-          ))}
-        </div>
+                  <p style={{ fontSize: 12, color: '#374151', margin: '4px 0 0' }}>
+                    {item.nomPersonne || item.demandeurNom || '—'}
+                    {(item.numeroDossier || item.dossierNumero) ? ` · ${item.numeroDossier || item.dossierNumero}` : ''}
+                    {' · '}{formaterDate(item.dateDescente)}
+                  </p>
+                </IonLabel>
+                <IonIcon icon={chevronForward} slot="end" style={{ color: '#cbd5e1' }} />
+              </IonItem>
+            ))}
+          </IonList>
+        )}
 
         <IonToast
           isOpen={!!toast}

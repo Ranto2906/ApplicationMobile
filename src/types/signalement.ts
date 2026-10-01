@@ -40,6 +40,10 @@ export interface SignalementDTO {
   idParcelle?: string;
   numeroLot?: string;
 
+  /** Propriété concernée (rattachement) — nécessaire pour pré-remplir l'édition. */
+  idPropriete?: number;
+  numeroPropriete?: string;
+
   commentaireTraitement?: string;
   dateTraitement?: string;
   idUtilisateurTraitement?: number;
@@ -94,9 +98,28 @@ export interface SignalementRequest {
   idTitreFoncier?: string;
   idParcelle?: string;
   idDossier?: number;
+  /** Propriété concernée par le signalement (mode en ligne : ID exact). */
+  idPropriete?: number;
   /** Géométrie GPS du constat (optionnelle) — GeoJSON texte. */
   geometrie?: GeometrieRequest;
   /** NB : le rattachement notification/avertissement passe par l'assignation (endpoint dédié). */
+}
+
+/** Propriété (référentiel) — miroir de ProprieteDTO, avec sa géométrie si localisée. */
+export interface ProprieteSimple {
+  idPropriete: number;
+  nom?: string;
+  numero?: string;
+  zone?: string;
+  localisation?: string;
+  superficieTotale?: number;
+  libelleLieu?: string;
+  idVille?: number;
+  nomVille?: string;
+  /** Géométrie embarquée (GeoJSON texte) — présente uniquement dans le cache hors-ligne. */
+  geojson?: string;
+  typeGeometrie?: string;
+  sourceGeometrie?: string;
 }
 
 export interface VilleSimple {

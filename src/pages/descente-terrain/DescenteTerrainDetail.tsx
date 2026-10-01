@@ -3,7 +3,7 @@ import {
   IonPage, IonHeader, IonToolbar, IonTitle, IonButtons, IonButton, IonIcon, IonContent,
   IonSpinner, IonToast, IonBadge, IonAlert,
 } from '@ionic/react';
-import { chevronBack, trashOutline, syncOutline } from 'ionicons/icons';
+import { chevronBack, trashOutline, syncOutline, createOutline } from 'ionicons/icons';
 import { useHistory, useParams } from 'react-router-dom';
 import { descenteTerrainApi } from '../../services/descenteTerrainService';
 import { db, type PendingOperation } from '../../services/db';
@@ -29,6 +29,8 @@ export default function DescenteTerrainDetail() {
 
   const [dt, setDt] = useState<DescenteTerrainDTO | null>(null);
   const [pending, setPending] = useState<PendingOperation | null>(null);
+  /** Modification déjà mise en file (PUT rejoué à la synchronisation). */
+  const [majEnAttente, setMajEnAttente] = useState<PendingOperation | null>(null);
   const [photos, setPhotos] = useState<Array<{ idPhoto?: number }>>([]);
   const [photoUrls, setPhotoUrls] = useState<Record<number, string>>({});
   const [loading, setLoading] = useState(true);
@@ -54,8 +56,14 @@ export default function DescenteTerrainDetail() {
       } catch (e) {
         console.warn('[SEIMAD:DescenteDetail] base locale indisponible', e);
       }
-      setPending(p);
-      if (p) {
+      setPending(null);
+      setMajEnAttente(null);
+      // Une création encore en file est un brouillon ; une modification en attente
+      // (UPDATE) se cumule avec les données serveur.
+      const estBrouillon = !!p && p.action === 'CREATE' && p.entiteType === 'descente_terrain';
+      const opMaj = p && p.action === 'UPDATE' && p.entiteType === 'descente_terrain' ? p : null;
+      if (estBrouillon && p) {
+        setPending(p);
         const payload = JSON.parse(p.payload) as DescenteTerrainDTO;
         setDt({
           idDescente: p.idLocal,
@@ -65,6 +73,8 @@ export default function DescenteTerrainDetail() {
           observation: payload.observation,
           mode: payload.mode || 'offline',
           validation: 'En attente',
+          idPersonne: payload.idPersonne,
+          idDossierParcelle: payload.idDossierParcelle,
           demandeurNom: payload.demandeurNom,
           demandeurContact: payload.demandeurContact,
           dossierNumero: payload.dossierNumero,
@@ -77,6 +87,7 @@ export default function DescenteTerrainDetail() {
         setPhotos([]);
         return;
       }
+      setMajEnAttente(opMaj);
 
       // 2) Serveur
       if (online) {
@@ -89,6 +100,25 @@ export default function DescenteTerrainDetail() {
         } catch {
           return;
         }
+      }
+
+      // Hors-ligne : modification en file → aperçu minimal depuis le payload.
+      if (opMaj) {
+        const payload = JSON.parse(opMaj.payload) as DescenteTerrainDTO;
+        setDt({
+          idDescente: id,
+          reference: 'Modification locale',
+          dateDescente: payload.dateDescente || opMaj.createdAt,
+          statutConstat: payload.statutConstat || 'En attente',
+          observation: payload.observation,
+          mode: payload.mode || 'offline',
+          validation: 'En attente',
+          demandeurNom: payload.demandeurNom,
+          dossierNumero: payload.dossierNumero,
+          synchronise: 0,
+        });
+        setPhotos([]);
+        return;
       }
 
       setDt(null);
@@ -134,6 +164,7 @@ export default function DescenteTerrainDetail() {
         if (pending) {
           setTimeout(() => history.replace('/tab/descente-terrain'), 900);
         } else {
+          lastLoadedRef.current = null; // forcer le rechargement (état local à jour)
           await charger();
         }
       } else {
@@ -152,13 +183,17 @@ export default function DescenteTerrainDetail() {
       } else {
         await descenteTerrainApi.supprimer(id);
       }
+      // Une modification en file ne doit pas rejouer un PUT sur une entité supprimée.
+      if (majEnAttente) {
+        await db.supprimerOperationPending(majEnAttente.idLocal).catch(() => undefined);
+      }
       setToast('Descente supprimée');
       setTimeout(() => history.replace('/tab/descente-terrain'), 800);
     } catch {
       setToast('Suppression impossible');
       setToastColor('danger');
     }
-  }, [id, pending, history]);
+  }, [id, pending, majEnAttente, history]);
 
   const estLocal = !!pending;
 
@@ -184,6 +219,13 @@ export default function DescenteTerrainDetail() {
           </IonButtons>
           <IonTitle>Détail descente</IonTitle>
           <IonButtons slot="end">
+            <IonButton
+              onClick={() => history.push(`/tab/descente-terrain/modifier/${id}`)}
+              style={{ color: 'white' }}
+              aria-label="Modifier"
+            >
+              <IonIcon icon={createOutline} />
+            </IonButton>
             <IonButton onClick={() => setConfirmDelete(true)} style={{ color: '#fca5a5' }}>
               <IonIcon icon={trashOutline} />
             </IonButton>
@@ -217,6 +259,11 @@ export default function DescenteTerrainDetail() {
                 <IonBadge style={{ background: COULEURS_VALIDATION[(dt.validation || '').toLowerCase()] || '#6b7280', color: '#fff', fontSize: 10.5 }}>
                   {dt.validation}
                 </IonBadge>
+                {majEnAttente && (
+                  <IonBadge style={{ background: '#176b87', color: '#fff', fontSize: 10.5 }}>
+                    ✏️ modifié localement
+                  </IonBadge>
+                )}
               </div>
               <p style={{ margin: '8px 0 0', fontSize: 11.5, color: '#9ca3af' }}>
                 {dt.mode === 'offline' ? '📴 Hors ligne' : '🌐 En ligne'} · {formaterDate(dt.dateDescente)}
@@ -229,12 +276,12 @@ export default function DescenteTerrainDetail() {
             }}>
               <b style={{ fontSize: 13 }}>📄 Informations du dossier</b>
               <div style={{ marginTop: 8, fontSize: 12.5, color: '#374151', lineHeight: 1.7 }}>
-                {dt.dossierNumero && <div><b>Numéro :</b> {dt.dossierNumero}</div>}
-                {dt.demandeurNom && <div><b>Demandeur :</b> {dt.demandeurNom}</div>}
-                {dt.demandeurContact && <div><b>Contact :</b> {dt.demandeurContact}</div>}
-                {dt.dossierSuperficie != null && <div><b>Superficie :</b> {dt.dossierSuperficie} m²</div>}
-                {dt.dossierVille && <div><b>Ville :</b> {dt.dossierVille}</div>}
-                {!dt.dossierNumero && !dt.demandeurNom && (
+                {(dt.numeroDossier || dt.dossierNumero) && <div><b>Numéro :</b> {dt.numeroDossier || dt.dossierNumero}</div>}
+                {(dt.nomPersonne || dt.demandeurNom) && <div><b>Demandeur :</b> {dt.nomPersonne || dt.demandeurNom}</div>}
+                {(dt.contactPersonne || dt.demandeurContact) && <div><b>Contact :</b> {dt.contactPersonne || dt.demandeurContact}</div>}
+                {dt.idDossier != null && <div><b>ID dossier :</b> {dt.idDossier}</div>}
+                {dt.idDossierParcelle && <div><b>ID dossier-parcelle :</b> {dt.idDossierParcelle}</div>}
+                {!(dt.numeroDossier || dt.dossierNumero || dt.nomPersonne || dt.demandeurNom) && (
                   <p style={{ color: '#9ca3af' }}>Aucune information dossier renseignée.</p>
                 )}
               </div>
@@ -317,12 +364,12 @@ export default function DescenteTerrainDetail() {
               )}
             </div>
 
-            {/* Brouillon local → bouton sync */}
-            {estLocal && (
+            {/* Brouillon local / modification en attente → bouton sync */}
+            {(estLocal || majEnAttente) && (
               <IonButton expand="block" onClick={synchroniserUn} disabled={syncing || !online}
                 style={{ '--border-radius': 12, marginBottom: 10 }}>
                 <IonIcon icon={syncOutline} slot="start" />
-                {syncing ? 'Synchronisation…' : 'Synchroniser maintenant'}
+                {syncing ? 'Synchronisation…' : estLocal ? 'Synchroniser maintenant' : 'Synchroniser la modification'}
               </IonButton>
             )}
           </>
