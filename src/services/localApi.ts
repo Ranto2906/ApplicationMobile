@@ -264,7 +264,12 @@ export const localApi = {
       throw Object.assign(new Error(`Route locale non trouvée : ${methode} ${chemin}`), { statut: 404 });
     } catch (e: any) {
       if (e?.statut) throw e;
-      throw Object.assign(new Error(e?.message || 'Erreur base locale'), { statut: 500 });
+      // Journaliser la VRAIE cause (ex. « saveToStore not implemented »,
+      // « Base SQLite non initialisée »…) : sur l'appareil, l'utilisateur ne
+      // voit que le toast générique de la page — la trace console est
+      // essentielle pour diagnostiquer un échec d'écriture SQLite.
+      console.error(`[SEIMAD:localApi] ${methode} ${chemin} → échec`, e?.message || e, e?.stack || '');
+      throw Object.assign(new Error(`Erreur base locale (${methode} ${chemin}) : ${e?.message || e}`), { statut: 500 });
     }
   },
 

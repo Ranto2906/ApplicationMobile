@@ -12,7 +12,8 @@ import { db, type PendingOperation } from '../../services/db';
 import { synchroniserSignalements } from '../../services/syncService';
 import { telechargerZone, type OfflineTileLayer } from '../../services/offlineMap';
 import { useOnline } from '../../hooks/useOnline';
-import type { SignalementDTO, PhotoSignalementDTO } from '../../types/signalement';
+import type { SignalementDTO, PhotoSignalementDTO, ProprieteSimple } from '../../types/signalement';
+import { extraireProprieteManuelle } from '../../services/proprieteManuelle';
 
 interface RouteParams { id: string }
 
@@ -27,6 +28,8 @@ export default function SignalementDetail() {
   const [pending, setPending] = useState<PendingOperation | null>(null);
   /** Modification déjà mise en file (PUT rejoué à la synchronisation). */
   const [majEnAttente, setMajEnAttente] = useState<PendingOperation | null>(null);
+  /** Fiche complète de la propriété rattachée (nom, zone, localisation, superficie…). */
+  const [propriete, setPropriete] = useState<ProprieteSimple | null>(null);
   const [position, setPosition] = useState<PointGeo | null>(null);
   const [photos, setPhotos] = useState<PhotoSignalementDTO[]>([]);
   const [historique, setHistorique] = useState<Array<{ action?: string; dateAction?: string; nomUtilisateur?: string }>>([]);
@@ -45,6 +48,12 @@ export default function SignalementDetail() {
 
   // Dédoublonnage : évite les recharges inutiles quand id/online ne changent pas
   const lastLoadedRef = useRef<{ id: string; online: boolean } | null>(null);
+  /** Garde-fou pour les réponses asynchrones après démontage. */
+  const actifRef = useRef(true);
+  useEffect(() => {
+    actifRef.current = true;
+    return () => { actifRef.current = false; };
+  }, []);
 
   const charger = useCallback(async () => {
     if (lastLoadedRef.current?.id === id && lastLoadedRef.current?.online === online) {
@@ -95,6 +104,15 @@ export default function SignalementDetail() {
         try {
           const s = await signalementApi.trouver(id);
           setSig(s);
+          // Fiche complète de la propriété rattachée (le DTO ne porte que
+          // l'id et le n°) — échec silencieux : le badge garde id/n° du DTO.
+          if (s.idPropriete) {
+            signalementApi.proprieteParId(s.idPropriete)
+              .then((p) => { if (actifRef.current) setPropriete(p); })
+              .catch(() => undefined);
+          } else {
+            setPropriete(null);
+          }
           // Position : cache local SQLite (la géométrie n'est pas rapatriée —
           // le mobile ne fait que pousser ; seuls les signalements créés sur
           // cet appareil ont une ligne `geometrie_locale`).
@@ -237,6 +255,14 @@ export default function SignalementDetail() {
     }
   }, [pending]);
 
+  // Propriété saisie manuellement sur le terrain — tracée en préfixe de la
+  // description par le formulaire hors-ligne (aucun champ serveur dédié).
+  // Affichée comme encart/badge dédié, jamais mélangée à l'observation.
+  const { proprieteManuelle, description: observationNettoyee } = useMemo(
+    () => extraireProprieteManuelle(sig?.description),
+    [sig?.description]
+  );
+
   return (
     <IonPage>
       <IonHeader>
@@ -306,6 +332,16 @@ export default function SignalementDetail() {
                     🏙️ {sig.nomVille}
                   </span>
                 )}
+                {(sig.numeroPropriete || sig.idPropriete != null) && (
+                  <span style={{ background: '#e0f2fe', color: '#075985', borderRadius: 999, padding: '3px 10px', fontSize: 11.5, fontWeight: 600 }}>
+                    🏠 Propriété {sig.numeroPropriete || propriete?.nom || `#${sig.idPropriete}`}
+                  </span>
+                )}
+                {proprieteManuelle && (
+                  <span style={{ background: '#fff7ed', color: '#9a3412', borderRadius: 999, padding: '3px 10px', fontSize: 11.5, fontWeight: 600 }}>
+                    🏷️ {proprieteManuelle} (saisie manuelle)
+                  </span>
+                )}
                 {sig.numeroTitre && (
                   <span style={{ background: '#f0fdf4', color: '#166534', borderRadius: 999, padding: '3px 10px', fontSize: 11.5, fontWeight: 600 }}>
                     📄 TF {sig.numeroTitre}
@@ -353,6 +389,50 @@ export default function SignalementDetail() {
               </div>
             )}
 
+            {/* Propriété & ville — fiche complète du rattachement foncier */}
+            {(propriete || sig.nomVille) && (
+              <div style={{
+                background: 'white', borderRadius: 14, padding: 12, marginBottom: 14, border: '1px solid #e2e8f0',
+              }}>
+                <b style={{ fontSize: 13 }}>🏠 Propriété & ville</b>
+                {propriete ? (
+                  <div style={{ marginTop: 8 }}>
+                    <div style={{ fontSize: 14, fontWeight: 700, color: '#0f172a' }}>
+                      {propriete.nom || 'Propriété sans nom'}
+                      {propriete.numero ? ` · n° ${propriete.numero}` : ''}
+                    </div>
+                    <div style={{
+                      display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginTop: 8,
+                    }}>
+                      <ChampInfo label="Ville" valeur={[propriete.nomVille, sig.nomVille].find(Boolean) || '—'} />
+                      <ChampInfo label="Lieu" valeur={propriete.libelleLieu || '—'} />
+                      <ChampInfo label="Zone" valeur={propriete.zone || '—'} />
+                      <ChampInfo label="Superficie totale" valeur={
+                        propriete.superficieTotale != null
+                          ? `${Number(propriete.superficieTotale).toLocaleString('fr-FR')} m²`
+                          : '—'
+                      } />
+                    </div>
+                    {propriete.localisation && (
+                      <div style={{ marginTop: 8, fontSize: 12.5, color: '#374151' }}>
+                        <span style={{ fontSize: 10, color: '#94a3b8', textTransform: 'uppercase' }}>Localisation</span>
+                        <div>{propriete.localisation}</div>
+                      </div>
+                    )}
+                  </div>
+                ) : sig.nomVille ? (
+                  <div style={{ marginTop: 8 }}>
+                    <ChampInfo label="Ville" valeur={sig.nomVille} />
+                  </div>
+                ) : null}
+                {!propriete && sig.idPropriete != null && online && (
+                  <p style={{ margin: '6px 0 0', fontSize: 11.5, color: '#9ca3af' }}>
+                    Détail de la propriété indisponible ({sig.numeroPropriete || `#${sig.idPropriete}`}).
+                  </p>
+                )}
+              </div>
+            )}
+
             {/* Localisation / position */}
             <div style={{
               background: 'white', borderRadius: 14, padding: 12, marginBottom: 14, border: '1px solid #e2e8f0',
@@ -382,8 +462,16 @@ export default function SignalementDetail() {
               background: 'white', borderRadius: 14, padding: 12, marginBottom: 14, border: '1px solid #e2e8f0',
             }}>
               <b style={{ fontSize: 13 }}>📝 Observation</b>
+              {proprieteManuelle && (
+                <p style={{
+                  margin: '8px 0 0', fontSize: 12.5, lineHeight: 1.5, color: '#92400e',
+                  background: '#fef3c7', borderRadius: 8, padding: '6px 10px',
+                }}>
+                  🏷️ Propriété saisie manuellement : <b>{proprieteManuelle}</b>
+                </p>
+              )}
               <p style={{ margin: '6px 0 0', fontSize: 13, lineHeight: 1.55, color: '#374151', whiteSpace: 'pre-wrap' }}>
-                {sig.description || '—'}
+                {observationNettoyee || '—'}
               </p>
             </div>
 
@@ -513,6 +601,16 @@ async function lirePositionGeometrie(entiteId: string): Promise<PointGeo | null>
   } catch {
     return null;
   }
+}
+
+/** Petit bloc label / valeur réutilisé dans les fiches du détail. */
+function ChampInfo({ label, valeur }: { label: string; valeur: string }) {
+  return (
+    <div style={{ background: '#f8fafc', borderRadius: 10, padding: '8px 10px' }}>
+      <div style={{ fontSize: 10, color: '#94a3b8', textTransform: 'uppercase' }}>{label}</div>
+      <div style={{ fontSize: 13, color: '#0f172a' }}>{valeur}</div>
+    </div>
+  );
 }
 
 /** Miniature photo serveur : le contenu est chargé AVEC le JWT puis affiché en data-url. */

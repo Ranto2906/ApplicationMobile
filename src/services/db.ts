@@ -168,6 +168,24 @@ class DatabaseService {
     const platform = Capacitor.getPlatform();
     console.log(`[SEIMAD:db] doInit → plateforme:`, platform);
 
+    // Santé du plugin natif : si son chargement a échoué au démarrage de l'app
+    // (ex. init Keystore/MasterKey — bug « CapacitorSQLitePlugin: null » du
+    // plugin v6, contourné par androidIsEncryption: false), chaque appel
+    // SQLite rejetterait avec un message opaque. Un echo explicite donne une
+    // erreur identifiable dès l'init, pas au moment d'enregistrer.
+    if (platform !== 'web') {
+      try {
+        const écho = await this.sqlite.echo('seimad');
+        if (écho?.value !== 'seimad') {
+          throw new Error(`echo inattendu : ${JSON.stringify(écho)}`);
+        }
+        console.log(`[SEIMAD:db] doInit → plugin natif SQLite opérationnel (echo ok)`);
+      } catch (e: any) {
+        console.error(`[SEIMAD:db] doInit → plugin natif SQLite HS`, e?.message || e);
+        throw new Error(`Plugin SQLite natif indisponible : ${e?.message || e}`);
+      }
+    }
+
     if (platform === 'web') {
       // Enregistrement du composant <jeep-sqlite> : fait par main.tsx au
       // démarrage. Trois cas possibles ici :
@@ -204,7 +222,23 @@ class DatabaseService {
       }
 
       console.log(`[SEIMAD:db] doInit → initWebStore…`);
-      await this.sqlite.initWebStore();
+      // Bug connu de jeep-sqlite : après un rechargement de page, initWebStore
+      // peut rester suspendu pour toujours (le 2e rechargement « débloque »).
+      // On borne l'attente puis on retente une fois — équivalent automatique du
+      // 2e rechargement — et en dernier recours on échoue proprement (l'appli
+      // se replie sur les replis hors-ligne au lieu de bloquer chaque appel).
+      const borner = <T,>(p: Promise<T>, ms: number, quoi: string): Promise<T> =>
+        Promise.race([
+          p,
+          new Promise<T>((_, reject) =>
+            setTimeout(() => reject(new Error(`${quoi} : délai de ${ms} ms dépassé`)), ms)),
+        ]);
+      try {
+        await borner(this.sqlite.initWebStore(), 10_000, 'initWebStore');
+      } catch (e: any) {
+        console.warn(`[SEIMAD:db] doInit → initWebStore suspendu, nouvelle tentative…`, e?.message || e);
+        await borner(this.sqlite.initWebStore(), 10_000, 'initWebStore (2e essai)');
+      }
       console.log(`[SEIMAD:db] doInit → initWebStore ok`);
     }
 
@@ -328,9 +362,27 @@ class DatabaseService {
     }
   }
 
-  /** Sur web : persiste la base (IndexedDB via jeep-sqlite). No-op sur natif. */
+  /**
+   * Persiste la base (IndexedDB via jeep-sqlite) — WEB uniquement.
+   *
+   * ⚠️ Sur NATIF, `saveToStore` n'existe pas dans le plugin Android/iOS :
+   * Capacitor rejette l'appel (« Method not implemented ») et l'écriture
+   * appelante (init, INSERT d'une opération en attente, géométrie…)
+   * échouait À CHAQUE FOIS sur l'appareil — d'où l'impossibilité de créer
+   * signalements/descentes hors-ligne. Sur natif, la base est déjà sur
+   * disque : rien à persister, on ne fait rien.
+   *
+   * Sur web, un échec de persistance (IndexedDB indisponible/quota) est
+   * journalisé mais n'annule pas l'écriture en cours : les données restent
+   * en mémoire le temps de la session.
+   */
   private async saveToStore(): Promise<void> {
-    await this.sqlite.saveToStore(DB_NAME);
+    if (Capacitor.getPlatform() !== 'web') return;
+    try {
+      await this.sqlite.saveToStore(DB_NAME);
+    } catch (e: any) {
+      console.warn(`[SEIMAD:db] saveToStore → persistance web ignorée`, e?.message || e);
+    }
   }
 
   private async getDb(): Promise<SQLiteDBConnection> {
@@ -600,6 +652,11 @@ class DatabaseService {
 
   // ── File générique d'opérations hors-ligne (poussée à la synchro) ──
   async ajouterOperationPending(op: PendingOperation): Promise<void> {
+    // PAS de try/catch englobant : une erreur ici doit remonter à l'appelant
+    // (localApi → page) pour que l'utilisateur sache que l'écriture a échoué
+    // et que l'opération ne soit PAS considérée comme en file. (Un catch
+    // silencieux faisait croire à un enregistrement réussi alors que rien
+    // n'était écrit — pire que l'échec visible.)
     return this.enqueueEcriture(async () => {
       const db = await this.getDb();
       await db.run(

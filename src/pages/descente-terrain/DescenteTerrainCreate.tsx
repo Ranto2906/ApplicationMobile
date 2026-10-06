@@ -9,8 +9,9 @@ import { useHistory, useParams } from 'react-router-dom';
 import { Camera, CameraResultType, CameraSource } from '@capacitor/camera';
 import { descenteTerrainApi } from '../../services/descenteTerrainService';
 import { db, type PendingOperation } from '../../services/db';
+import { isNativePlatform } from '../../platform';
 import localApi from '../../services/localApi';
-import { synchroniserSignalements, refilerPhotosEchouees } from '../../services/syncService';
+import { synchroniserSignalements, refilerPhotosEchouees, blobVersFichier } from '../../services/syncService';
 import { useOnline } from '../../hooks/useOnline';
 import type {
   DossierSearchResult, StatutConstat, DescenteTerrainRequest, ParcelleSnapshot,
@@ -40,8 +41,9 @@ export default function DescenteTerrainCreate() {
   /** Photos déjà présentes sur le serveur (affichage seul). */
   const [photosServeur, setPhotosServeur] = useState<string[]>([]);
   // Capacité locale (SQLite) : natif, ou jeep-sqlite disponible sur le web.
-  const sqliteOk = !!(window as any).__SEIMAD_WEB_SQLITE_AVAILABLE__
-    || /capacitor|ionic/i.test(navigator.userAgent);
+  // isNativePlatform() = critère fiable (le test userAgent d'origine pouvait
+  // se tromper selon la WebView) — même définition que SignalementCreate.
+  const sqliteOk = isNativePlatform() || !!(window as any).__SEIMAD_WEB_SQLITE_AVAILABLE__;
   // En édition d'une descente SERVEUR, les infos dossier sont des snapshots
   // liés au dossier rattaché : elles ne sont pas modifiables depuis le mobile.
   const dossierVerrouille = modeEdition && !brouillonLocal;
@@ -95,6 +97,10 @@ export default function DescenteTerrainCreate() {
         const res = await synchroniserSignalements();
         setToast(`${res.reussis}/${res.total} opération(s) synchronisée(s)`);
         setToastColor(res.echecs === 0 ? 'success' : 'danger');
+      } catch (e) {
+        // Jamais de rejet non géré ici : sur le terrain (réseau instable), une
+        // erreur de synchro ne doit pas perturber l'écran de création.
+        console.warn('[SEIMAD:DescenteCreate] synchro auto ignorée', e);
       } finally {
         setSyncing(false);
         db.nombreOperationsPending().then(setPendingCount).catch(() => undefined);
@@ -347,6 +353,20 @@ export default function DescenteTerrainCreate() {
       const opEdition = modeEdition && idModification
         ? await db.trouverOperationPending(idModification).catch(() => null)
         : null;
+      // ⚠️ Garde-fou anti-écrasement (cf. SignalementCreate) : hors-ligne et
+      // entité inconnue localement (ni brouillon, ni UPDATE en file, ni chargement
+      // serveur réussi) → on refuse l'UPDATE filé qui écraserait les données
+      // serveur avec un payload partiel à la synchronisation.
+      if (
+        modeEdition && idModification && !opEdition &&
+        !(brouillonLocal && !opEdition) && (!online || !editionChargeeRef.current)
+      ) {
+        setToast(
+          'Modification impossible hors-ligne : cette descente n\'est pas disponible sur cet appareil. Reconnectez-vous au serveur pour l\'éditer.'
+        );
+        setToastColor('danger');
+        return;
+      }
       // Cas limite : le brouillon vient d'être synchronisé pendant l'édition →
       // plus d'id local, on repasse sur la création classique.
       if (modeEdition && idModification && !(brouillonLocal && !opEdition)) {
@@ -378,7 +398,10 @@ export default function DescenteTerrainCreate() {
             for (const p of photoMetas) {
               try {
                 const form = new FormData();
-                form.append('fichier', dataUrlVersBlob(p.dataUrl), `descente_${Date.now()}.png`);
+                // File nommée (et non Blob brut) : le pont natif CapacitorHttp
+                // n'envoie comme fichier que les valeurs instanceof File.
+                const fichier = blobVersFichier(dataUrlVersBlob(p.dataUrl), `descente_${Date.now()}.jpg`);
+                form.append('fichier', fichier, `descente_${Date.now()}.jpg`);
                 form.append('entiteType', 'descente_terrain');
                 form.append('entiteId', id);
                 if (p.typePhoto) form.append('typePhoto', p.typePhoto);
@@ -447,8 +470,11 @@ export default function DescenteTerrainCreate() {
           for (const p of photoMetas) {
             try {
               const form = new FormData();
+              // File nommée (et non Blob brut) : le pont natif CapacitorHttp
+              // n'envoie comme fichier que les valeurs instanceof File.
               const blob = dataUrlVersBlob(p.dataUrl);
-              form.append('fichier', blob, `descente_${Date.now()}.png`);
+              const fichier = blobVersFichier(blob, `descente_${Date.now()}.jpg`);
+              form.append('fichier', fichier, `descente_${Date.now()}.jpg`);
               form.append('entiteType', 'descente_terrain');
               form.append('entiteId', cree.idDescente);
               if (p.typePhoto) form.append('typePhoto', p.typePhoto);
@@ -479,8 +505,12 @@ export default function DescenteTerrainCreate() {
 
       // File locale (SQLite via l'API locale de l'application) : mode hors-ligne
       // ou repli après échec API. La synchronisation poussera ce même payload.
-      if (!(window as any).__SEIMAD_WEB_SQLITE_AVAILABLE__ && !/capacitor|ionic/i.test(navigator.userAgent)) {
-        setToast('Impossible d’enregistrer : stockage local indisponible. Connectez-vous puis réessayez.');
+      if (!sqliteOk) {
+        setToast(
+          online
+            ? 'Impossible d’enregistrer : le stockage local n’est pas disponible sur ce navigateur. Réessayez en ligne.'
+            : 'Impossible d’enregistrer : hors-ligne et stockage local non disponible. Connectez-vous puis réessayez.'
+        );
         setToastColor('danger');
         return;
       }
@@ -488,9 +518,13 @@ export default function DescenteTerrainCreate() {
       setToast('Enregistré localement — synchronisation au retour du réseau');
       setToastColor('success');
       setTimeout(() => history.replace('/tab/descente-terrain'), 1500);
-    } catch (e) {
+    } catch (e: any) {
       console.error(e);
-      setToast('Erreur pendant l\'enregistrement');
+      // Afficher la VRAIE cause (ex. « Erreur base locale (POST /descentes-terrain) : … »)
+      // : un toast générique rend tout échec d'enregistrement indéchiffrable sur
+      // le terrain (pas de DevTools sur l'appareil).
+      const detail = e?.message ? String(e.message) : 'erreur inconnue';
+      setToast(`Erreur pendant l’enregistrement — ${detail}`);
       setToastColor('danger');
     } finally {
       setSaving(false);

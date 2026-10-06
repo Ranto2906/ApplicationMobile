@@ -1,4 +1,5 @@
-import api from './api';
+import api, { envoyerPhotoApi } from './api';
+import { contenuPhotoDataUrl } from './photoContenu';
 import type {
   DescenteTerrainDTO, DescenteTerrainRequest, DossierSearchResult, Page,
 } from '../types/descenteTerrain';
@@ -35,21 +36,13 @@ export const descenteTerrainApi = {
   photos: (entiteId: string) =>
     api.get('/photos', { params: { entiteType: 'descente_terrain', entiteId } }).then((r) => r.data),
   ajouterPhoto: (form: FormData) =>
-    api.post('/photos', form, {
-      headers: { 'Content-Type': 'multipart/form-data' },
-      // Les photos d'appareil (1–4 Mo) dépassent souvent le timeout global
-      // de 8 s sur une connexion terrain → upload annulé avant la fin.
-      timeout: 120000,
-    }).then((r) => r.data),
+    // fetch (et non axios) : le pont natif CapacitorHttp ne transmet pas le
+    // corps multipart via le patch XMLHttpRequest (voir envoyerPhotoApi dans
+    // api.ts). Timeout 120 s : les photos d'appareil (1–4 Mo) dépassent le
+    // timeout global de 8 s sur une connexion terrain.
+    envoyerPhotoApi<unknown>('/photos', form, 120_000),
   contenuPhoto: async (idPhoto: number) => {
-    const r = await api.get(`/photos/${idPhoto}/contenu`, { responseType: 'blob' });
-    const blob = r.data as Blob;
-    return await new Promise<string>((resolve, reject) => {
-      const fr = new FileReader();
-      fr.onload = () => resolve(String(fr.result));
-      fr.onerror = () => reject(fr.error);
-      fr.readAsDataURL(blob);
-    });
+    return await contenuPhotoDataUrl(api, idPhoto);
   },
 };
 

@@ -25,15 +25,26 @@ class ErrorBoundary extends Component<{ children: ReactNode }, ErrorBoundaryStat
 
   render() {
     if (!this.state.error) return this.props.children;
+    // Le message réel est affiché : un écran blanc muet est indiable sur le
+    // terrain — avec le message, l'utilisateur peut le photographier et le
+    // rapporter (ex. « Failed to fetch dynamically imported module »,
+    // « Cannot read properties of undefined », etc.).
     return (
       <div style={{
         minHeight: '100vh', padding: 24, display: 'flex', flexDirection: 'column',
         justifyContent: 'center', fontFamily: 'sans-serif', background: '#f8fafc', color: '#1f2937',
       }}>
         <h1 style={{ margin: '0 0 12px', fontSize: 22 }}>SEIMAD ne peut pas afficher cet écran</h1>
-        <p style={{ margin: '0 0 20px', lineHeight: 1.5 }}>
+        <p style={{ margin: '0 0 12px', lineHeight: 1.5 }}>
           Vérifiez que les données locales sont disponibles, puis redémarrez l'application.
         </p>
+        <pre style={{
+          margin: '0 0 20px', padding: 12, background: '#fef2f2', color: '#b91c1c',
+          border: '1px solid #fecaca', borderRadius: 8, fontSize: 12,
+          whiteSpace: 'pre-wrap', wordBreak: 'break-word', maxHeight: '40vh', overflow: 'auto',
+        }}>
+          {this.state.error?.message || String(this.state.error)}
+        </pre>
         <button
           type="button"
           onClick={() => window.location.reload()}

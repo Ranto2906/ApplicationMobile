@@ -24,6 +24,17 @@ const config: CapacitorConfig = {
     CapacitorHttp: {
       enabled: true,
     },
+    // @capacitor-community/sqlite : DÉSACTIVE le chiffrement (défaut du plugin =
+    // true !). Sur certains appareils, l'init Android Keystore/MasterKey du plugin
+    // échoue au démarrage (NPE) → « CapacitorSQLitePlugin: null » renvoyé pour
+    // TOUS les appels SQLite : aucune écriture locale possible (création
+    // signalement/descente hors-ligne impossible). Nos bases sont créées en
+    // 'no-encryption' : ce flag n'affecte aucune donnée existante.
+    CapacitorSQLite: {
+      androidIsEncryption: false,
+      iosIsEncryption: false,
+      electronIsEncryption: false,
+    },
   },
 };
 

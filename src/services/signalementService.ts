@@ -1,4 +1,5 @@
-import api from './api';
+import api, { envoyerPhotoApi } from './api';
+import { contenuPhotoDataUrl } from './photoContenu';
 import type {
   SignalementDTO, SignalementRequest, TypeSignalement, StatutSignalement,
   PhotoSignalementDTO, AuditSignalement, VilleSimple, Page, ProprieteSimple,
@@ -20,6 +21,9 @@ export const signalementApi = {
   // ── Propriétés (référentiel du formulaire de signalement) ──
   /** Toutes les propriétés (le volume est raisonnable : ~200 lignes). */
   proprietes: () => api.get<ProprieteSimple[]>('/proprietes/search?search=').then((r) => r.data),
+  /** Détail complet d'une propriété (fiche rattachée au signalement). */
+  proprieteParId: (idPropriete: number) =>
+    api.get<ProprieteSimple>(`/proprietes/${idPropriete}`).then((r) => r.data),
   /** Recherche filtrée (nom, numéro, zone, lieu, ville). */
   rechercherProprietes: (search: string) =>
     api.get<ProprieteSimple[]>('/proprietes/search', { params: { search } }).then((r) => r.data),
@@ -55,25 +59,14 @@ export const signalementApi = {
   photos: (entiteId: string) =>
     api.get<PhotoSignalementDTO[]>('/photos', { params: { entiteType: 'signalement', entiteId } }).then((r) => r.data),
   ajouterPhoto: (form: FormData) =>
-    // Multipart explicite : l'instance axios par défaut est en JSON et
-    // sérialiserait le FormData en JSON (fichier perdu → 415 du backend).
-    api.post<PhotoSignalementDTO>('/photos', form, {
-      headers: { 'Content-Type': 'multipart/form-data' },
-      // Les photos d'appareil (1–4 Mo) dépassent souvent le timeout global
-      // de 8 s sur une connexion terrain → upload annulé avant la fin.
-      timeout: 120000,
-    }).then((r) => r.data),
-  /** Récupère le contenu binaire AVEC le JWT (les <img> n'envoient pas l'en-tête). */
-  contenuPhoto: async (idPhoto: number) => {
-    const r = await api.get(`/photos/${idPhoto}/contenu`, { responseType: 'blob' });
-    const blob = r.data as Blob;
-    return await new Promise<string>((resolve, reject) => {
-      const fr = new FileReader();
-      fr.onload = () => resolve(String(fr.result));
-      fr.onerror = () => reject(fr.error);
-      fr.readAsDataURL(blob);
-    });
-  },
+    // fetch (et non axios) : le pont natif CapacitorHttp ne transmet pas le
+    // corps multipart via le patch XMLHttpRequest (voir envoyerPhotoApi dans
+    // api.ts). Timeout 120 s : les photos d'appareil (1–4 Mo) dépassent le
+    // timeout global de 8 s sur une connexion terrain.
+    envoyerPhotoApi<PhotoSignalementDTO>('/photos', form, 120_000),
+  /** Récupère le contenu binaire AVEC le JWT (les <img> n'envoient pas l'en-tête).
+   *  Gère la réponse base64 du pont natif CapacitorHttp (voir photoContenu.ts). */
+  contenuPhoto: (idPhoto: number) => contenuPhotoDataUrl(api, idPhoto),
 };
 
 export default signalementApi;

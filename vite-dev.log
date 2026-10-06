@@ -1,0 +1,52 @@
+
+> seimad-mobile@1.0.0 dev
+> vite
+
+Port 5174 is in use, trying another one...
+
+  [32m[1mVITE[22m v6.4.3[39m  [2mready in [0m[1m1114[22m[2m[0m ms[22m
+
+  [32m➜[39m  [1mLocal[22m:   [36mhttp://localhost:[1m5175[22m/[39m
+  [32m➜[39m  [1mNetwork[22m: [36mhttp://192.168.137.189:[1m5175[22m/[39m
+[2m09:14:37[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/descentes-terrain?page=0&size=25[39m
+Error: connect ETIMEDOUT 192.168.0.46:8093
+    at TCPConnectWrap.afterConnect [as oncomplete] (node:net:1634:16)
+[2m09:25:02[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/signalements?page=0&size=10[39m
+Error: connect ETIMEDOUT 192.168.0.46:8093
+    at TCPConnectWrap.afterConnect [as oncomplete] (node:net:1634:16)
+[2m09:25:02[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/descentes-terrain?page=0&size=8[39m
+Error: connect ETIMEDOUT 192.168.0.46:8093
+    at TCPConnectWrap.afterConnect [as oncomplete] (node:net:1634:16)
+[2m09:25:23[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/descentes-terrain?page=0&size=25[39m
+Error: connect ETIMEDOUT 192.168.0.46:8093
+    at TCPConnectWrap.afterConnect [as oncomplete] (node:net:1634:16)
+[2m09:36:28[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/App.tsx[22m
+[2m09:36:52[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/descentes-terrain?page=0&size=25[39m
+Error: connect ETIMEDOUT 192.168.0.46:8093
+    at TCPConnectWrap.afterConnect [as oncomplete] (node:net:1634:16)
+[2m09:37:43[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/context/AuthContext.tsx, /src/pages/descente-terrain/DescenteTerrainList.tsx, /src/pages/Dashboard.tsx, /src/pages/Login.tsx[22m
+[2m09:37:44[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [33mhmr invalidate [39m[2m/src/context/AuthContext.tsx[22m Could not Fast Refresh ("useAuth" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+[2m09:37:44[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/App.tsx, /src/pages/Login.tsx, /src/pages/Dashboard.tsx[22m
+[2m09:37:46[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/context/AuthContext.tsx, /src/pages/descente-terrain/DescenteTerrainList.tsx, /src/pages/Dashboard.tsx, /src/pages/Login.tsx[22m
+[2m09:37:46[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [33mhmr invalidate [39m[2m/src/context/AuthContext.tsx[22m Could not Fast Refresh ("useAuth" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+[2m09:37:46[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/App.tsx, /src/pages/Login.tsx, /src/pages/Dashboard.tsx[22m
+[2m09:37:59[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/context/AuthContext.tsx, /src/pages/descente-terrain/DescenteTerrainList.tsx, /src/pages/Dashboard.tsx, /src/pages/Login.tsx[22m
+[2m09:38:00[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [33mhmr invalidate [39m[2m/src/context/AuthContext.tsx[22m Could not Fast Refresh ("useAuth" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+[2m09:38:00[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/App.tsx, /src/pages/Login.tsx, /src/pages/Dashboard.tsx[22m
+[2m09:38:08[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/descentes-terrain?page=0&size=25[39m
+Error: connect ETIMEDOUT 192.168.0.46:8093
+    at TCPConnectWrap.afterConnect [as oncomplete] (node:net:1634:16)
+[2m09:38:16[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/descentes-terrain?page=0&size=25[39m
+Error: connect ETIMEDOUT 192.168.0.46:8093
+    at TCPConnectWrap.afterConnect [as oncomplete] (node:net:1634:16)
+[2m09:38:20[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2mandroid/app/src/main/assets/public/index.html[22m
+[2m09:38:27[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/descentes-terrain?page=0&size=25[39m
+Error: connect ETIMEDOUT 192.168.0.46:8093
+    at TCPConnectWrap.afterConnect [as oncomplete] (node:net:1634:16)
+[2m09:38:27[22m [36m[1m[vite][22m[39m [32mvite.config.ts changed, restarting server...[39m
+[2m09:38:27[22m [36m[1m[vite][22m[39m [32mvite.config.ts changed, restarting server...[39m
+[2m09:38:28[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2mandroid/app/src/main/assets/public/index.html[22m
+[2m09:38:34[22m [36m[1m[vite][22m[39m server restarted.
+[2m09:40:20[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2mandroid/app/build/intermediates/assets/debug/public/index.html[22m
+[2m09:44:10[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2mandroid/app/src/main/assets/public/index.html[22m
+[2m09:44:26[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2mandroid/app/src/main/assets/public/index.html[22m

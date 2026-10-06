@@ -37,13 +37,31 @@ function nouvelIdLocal(): string {
 /** Forme FormData d'une photo (partagé par les 4 chemins d'envoi). */
 function formDataPhoto(p: PhotoLocale, entiteType: string, entiteId: string, nom: string): FormData {
   const form = new FormData();
-  form.append('fichier', dataUrlToBlob(p.dataUrl), nom);
+  // ⚠️ File (et non Blob) : le pont natif CapacitorHttp (convertFormData du
+  // native-bridge.js) n'envoie comme fichier que les valeurs `instanceof File`
+  // (name + contentType + base64) ; un Blob serait sérialisé en chaîne
+  // "[object Blob]" et refusé par le backend (format non supporté).
+  form.append('fichier', blobVersFichier(dataUrlToBlob(p.dataUrl), nom), nom);
   form.append('entiteType', entiteType);
   form.append('entiteId', entiteId);
   if (p.typePhoto) form.append('typePhoto', p.typePhoto);
   if (p.datePrise) form.append('datePrise', p.datePrise);
   if (p.observation) form.append('observation', p.observation);
   return form;
+}
+
+/** Enveloppe un Blob en File nommée — requise pour l'upload multipart natif. */
+export function blobVersFichier(blob: Blob, nom: string): File {
+  if (typeof File !== 'undefined' && blob instanceof File) return blob;
+  if (typeof File === 'undefined') {
+    // Repli (rare) : environnement sans File — on renvoie le Blob tel quel.
+    return blob as unknown as File;
+  }
+  try {
+    return new File([blob], nom, { type: blob.type || 'image/jpeg' });
+  } catch {
+    return blob as unknown as File;
+  }
 }
 
 /**

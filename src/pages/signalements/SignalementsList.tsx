@@ -11,6 +11,7 @@ import { db, type PendingOperation } from '../../services/db';
 import { synchroniserTout } from '../../services/syncService';
 import { useOnline } from '../../hooks/useOnline';
 import type { SignalementDTO, Page } from '../../types/signalement';
+import { extraireProprieteManuelle } from '../../services/proprieteManuelle';
 
 const COULEURS_STATUT: Record<string, string> = {
   nouveau: '#176b87', 'en attente': '#b7791f', 'en cours': '#176b87',
@@ -168,6 +169,8 @@ export default function SignalementsList() {
             <IonList style={{ border: '1px solid #f0e0a8', borderRadius: 12, overflow: 'hidden' }}>
               {pendingItems.map((p) => {
                 const pl = (() => { try { return JSON.parse(p.payload) as { description?: string; dateSignalement?: string }; } catch { return {}; } })();
+                // Propriété saisie manuellement : préfixe de la description → badge dédié.
+                const { proprieteManuelle, description: descriptionLocale } = extraireProprieteManuelle(pl.description);
                 return (
                   <IonItem key={p.idLocal} lines="inset" style={{ '--background': '#fffbeb' }}>
                     <IonIcon icon={cloudOfflineOutline} slot="start" style={{ color: '#b7791f', fontSize: 20 }} />
@@ -175,9 +178,18 @@ export default function SignalementsList() {
                       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                         <b style={{ fontSize: 13 }}>Signalement local</b>
                         <IonBadge style={{ background: '#b7791f', color: '#fff', fontSize: 9.5 }}>En attente</IonBadge>
+                        {proprieteManuelle && (
+                          <span style={{
+                            background: '#fef3c7', color: '#92400e', borderRadius: 999,
+                            padding: '1px 8px', fontSize: 10, fontWeight: 600,
+                            maxWidth: 150, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                          }}>
+                            🏷️ {proprieteManuelle}
+                          </span>
+                        )}
                       </div>
                       <p style={{ fontSize: 12, color: '#374151', marginTop: 4, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                        {pl.description || '(sans observation)'}
+                        {descriptionLocale || '(sans observation)'}
                       </p>
                       <p style={{ fontSize: 11, color: '#9ca3af' }}>
                         {formaterDate(pl.dateSignalement)} · enregistré le {formaterDate(p.createdAt)}

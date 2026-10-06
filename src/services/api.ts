@@ -59,6 +59,102 @@ function processQueue(error: unknown) {
   failedQueue = [];
 }
 
+/**
+ * ⚠️ Le `timeout: 8000` d'axios n'est pas honoré quand CapacitorHttp est actif
+ * (capacitor.config.ts) : le XHR patché du pont natif (native-bridge.js) ne lit
+ * jamais cette propriété. Un serveur injoignable alors que le réseau est actif
+ * (backend éteint, mauvaise IP) faisait donc HANGUER les appels bien au-delà de
+ * 8 s — spinner figé, aucune bascule vers le mode local.
+ * Ce délai applicatif rejette l'appel après `delaiMs` quand la réponse ne vient
+ * pas. Il ne touche que les ERREURS réseau : une réponse HTTP (même lente) n'est
+ * jamais interrompue — l'upload de photos (timeout: 120000) reste garanti.
+ */
+const DÉLAI_RÉSEAU_MS = 10_000;
+function avecDélai<T>(p: Promise<T>, delaiMs: number, url?: string): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const expiration = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(Object.assign(
+      new Error(`Délai dépassé (${Math.round(delaiMs / 1000)} s) : serveur injoignable${url ? ` (${url})` : ''}`),
+      { code: 'ECONNABORTED' }
+    )), delaiMs);
+  });
+  return Promise.race([p, expiration]).finally(() => { if (timer) clearTimeout(timer); });
+}
+
+// ── Upload multipart via fetch (pont natif CapacitorHttp) ───────────────
+// POURQUOI fetch ET PAS axios POUR LES PHOTOS :
+//  - Le patch XMLHttpRequest du pont natif n'initialise JAMAIS le Content-Type
+//    quand axios le supprime pour laisser la plateforme le régénérer
+//    (resolveConfig : headers.setContentType(undefined) si FormData) : côté Java
+//    (CapacitorHttpUrlConnection.setRequestBody), contentType == null → le corps
+//    de la requête n'est PAS écrit → le POST /photos arrive sans aucune part →
+//    400 « fichier manquant » côté Spring.
+//  - Avec un Content-Type multipart explicite SANS boundary, le patch XHR le
+//    transmet tel quel et le code natif plante (contentType.split(";")[1] hors
+//    bornes) — le patch fetch, lui, supprime ce header avant l'envoi.
+//  - Le patch fetch reconstruit un Request standard : le Content-Type multipart
+//    AVEC boundary est régénéré, et convertFormData transmet les fichiers
+//    (instanceof File — d'où blobVersFichier) en base64 vers le natif, qui
+//    réécrit un multipart conforme côté Java.
+export async function envoyerPhotoApi<T = unknown>(
+  chemin: string,
+  form: FormData,
+  timeoutMs = 120_000,
+): Promise<T> {
+  const url = `${config.getApiBase()}${chemin}`;
+  const controleur = new AbortController();
+  const timer = setTimeout(() => controleur.abort(), timeoutMs);
+  const faire = async (): Promise<Response> => {
+    // Reconstruit à chaque tentative : le token peut avoir été rafraîchi.
+    const headers: Record<string, string> = {};
+    const token = getAccessToken();
+    if (token) headers.Authorization = `Bearer ${token}`;
+    // NB : AUCUN Content-Type ici — le navigateur/WebView génère
+    // « multipart/form-data; boundary=… », requis par le pont natif.
+    return fetch(url, { method: 'POST', headers, body: form, signal: controleur.signal });
+  };
+  try {
+    let res = await faire();
+    // Comportement préservé de l'intercepteur axios : un access token expiré
+    // pendant la saisie (photo longue à préparer) ne doit pas tuer l'upload —
+    // on rafraîchit UNE fois puis on retente.
+    if (res.status === 401 && (await tenterRefresh())) {
+      res = await faire();
+    }
+    const texte = await res.text();
+    let data: unknown = undefined;
+    try { data = texte ? JSON.parse(texte) : undefined; } catch { data = texte; }
+    if (!res.ok) {
+      const corps = data as { message?: string; erreur?: string } | undefined;
+      const message = corps?.message || corps?.erreur || `Erreur ${res.status}`;
+      throw Object.assign(new Error(String(message)), {
+        response: { status: res.status, data },
+      });
+    }
+    return data as T;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/** Rafraîchit les tokens (une tentative). Retourne true si succès. */
+async function tenterRefresh(): Promise<boolean> {
+  const rt = getRefreshToken();
+  if (!rt) return false;
+  try {
+    const { data } = await avecDélai(
+      axios.post<LoginResponse>(`${config.getApiBase()}/auth/refresh`, { refreshToken: rt } as TokenRefreshRequest),
+      DÉLAI_RÉSEAU_MS,
+      '/auth/refresh',
+    );
+    setTokens(data.accessToken, data.refreshToken);
+    localStorage.setItem('user', JSON.stringify(data.utilisateur));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 api.interceptors.response.use(
   (r) => r,
   async (error) => {
@@ -87,7 +183,11 @@ api.interceptors.response.use(
       }
       try {
         const début = performance.now();
-        const { data } = await axios.post<LoginResponse>(`${config.getApiBase()}/auth/refresh`, { refreshToken: rt } as TokenRefreshRequest);
+        const { data } = await avecDélai(
+          axios.post<LoginResponse>(`${config.getApiBase()}/auth/refresh`, { refreshToken: rt } as TokenRefreshRequest),
+          DÉLAI_RÉSEAU_MS,
+          '/auth/refresh',
+        );
         log('response → refresh OK en', `${(performance.now() - début).toFixed(0)}ms`);
         setTokens(data.accessToken, data.refreshToken);
         localStorage.setItem('user', JSON.stringify(data.utilisateur));
@@ -109,6 +209,10 @@ api.interceptors.response.use(
     }
     if (estReseau) {
       log('response → erreur réseau (pas de réponse HTTP) sur', orig?.url, '| statut:', statut);
+      // Ne rejette qu'après le délai applicatif : en natif, un serveur qui ne
+      // répond pas (SYN perdu, backend mort) ne produit parfois AUCUNE erreur
+      // axios avant longtemps — on rend la main à l'UI.
+      return avecDélai(Promise.reject(error), orig?.timeout ?? DÉLAI_RÉSEAU_MS, orig?.url);
     } else {
       log('response → erreur HTTP', statut, 'sur', orig?.url);
     }

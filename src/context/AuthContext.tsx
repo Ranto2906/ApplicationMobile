@@ -97,7 +97,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           return;
         }
         throw erreurHorsLigne(
-          'Identifiants incorrects (vérification hors-ligne). Connectez-vous une première fois en ligne.'
+          'Serveur injoignable et aucun compte enregistré sur cet appareil. Connectez-vous au réseau du serveur (WiFi du site), puis réessayez.'
         );
       }
       throw err;
@@ -108,7 +108,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const sessionUser = await verifierIdentifiantsLocaux(request.nomUtilisateur, request.motDePasse);
     if (!sessionUser) {
       throw erreurHorsLigne(
-        'Connexion hors-ligne impossible : aucun compte enregistré sur cet appareil. Connectez-vous une première fois en ligne.'
+        'Connexion hors-ligne impossible : aucun compte enregistré sur cet appareil. Connectez-vous au même réseau que le serveur, puis réessayez.'
       );
     }
     await restaurerSessionLocale().catch(() => null);
@@ -118,10 +118,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const logout = async () => {
     const refreshToken = localStorage.getItem('refreshToken');
-    try { await authApi.logout(refreshToken); } catch { /* ignore */ }
+    let refusLogout: { response?: unknown } | null = null;
+    try { await authApi.logout(refreshToken); } catch (e) { refusLogout = e as { response?: unknown }; }
     clearTokens();
-    // Supprime la session locale : une reconnexion exigera le réseau.
-    await effacerSessionLocale().catch(() => undefined);
+    // ⚠️ Session locale conservée UNIQUEMENT si le serveur est injoignable
+    // (erreur réseau sans réponse HTTP) : la détruire dans ce cas condamnerait
+    // l'accès terrain — au redémarrage, `loginHorsLigne` échouerait (« aucun
+    // compte enregistré ») et l'agent serait bloqué jusqu'au retour du réseau.
+    // En revanche, si le serveur a répondu (logout OK ou refus HTTP), la
+    // déconnexion est volontaire et confirmée → on efface tout.
+    const serveurInjoignable = refusLogout != null && !refusLogout.response;
+    if (serveurInjoignable) {
+      log('logout → serveur injoignable : session locale conservée (accès terrain préservé)');
+    } else {
+      await effacerSessionLocale().catch(() => undefined);
+    }
     setUser(null);
   };
 

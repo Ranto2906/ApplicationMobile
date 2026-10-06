@@ -44,6 +44,40 @@ log('main · démarrage SEIMAD (plateforme web)');
 // script exécuté). Utile pour corréler les traces entre db/Auth/api.
 (window as any).__SEIMAD_DÉMARAGE__ = performance.now();
 
+/* ── erreurs globales visibles (le téléphone n'a pas de DevTools) ─────────
+   Sans cela, une erreur JS non gérée se traduit sur l'appareil par un écran
+   blanc muet. On affiche un bandeau rouge dissimulable avec le message —
+   photo-écranable par l'utilisateur pour le rapport de bug. */
+function afficherErreurGlobale(message: string) {
+  try {
+    let bandeau = document.getElementById('seimad-erreurs') as HTMLDivElement | null;
+    if (!bandeau) {
+      bandeau = document.createElement('div');
+      bandeau.id = 'seimad-erreurs';
+      bandeau.setAttribute('role', 'alert');
+      bandeau.style.cssText = [
+        'position:fixed', 'left:8px', 'right:8px', 'bottom:8px', 'z-index:99999',
+        'background:#7f1d1d', 'color:white', 'border-radius:10px',
+        'padding:10px 12px', 'font:12px/1.5 monospace', 'max-height:45%',
+        'overflow:auto', 'box-shadow:0 4px 16px rgba(0,0,0,.4)', 'white-space:pre-wrap',
+      ].join(';');
+      bandeau.textContent = '⚠️ Erreur application (toucher pour masquer)\n';
+      bandeau.addEventListener('click', () => { bandeau?.remove(); });
+      document.body?.appendChild(bandeau);
+    }
+    bandeau.textContent += message + '\n';
+  } catch { /* DOM pas prêt : rien à faire */ }
+}
+window.addEventListener('error', (e) => {
+  logErr(e.error ?? e.message, 'window.onerror');
+  afficherErreurGlobale(`Erreur : ${(e as ErrorEvent).message || 'inconnue'}`);
+});
+window.addEventListener('unhandledrejection', (e) => {
+  logErr((e as PromiseRejectionEvent).reason, 'unhandledrejection');
+  const raison = (e as PromiseRejectionEvent).reason as { message?: string } | undefined;
+  afficherErreurGlobale(`Promesse rejetée : ${raison?.message || String(raison ?? 'inconnue')}`);
+});
+
 /* jeep-sqlite : support navigateur du plugin SQLite (@capacitor-community/sqlite).
    Le fichier sql-wasm.wasm est servi depuis /assets (voir public/assets). */
 import { defineCustomElements as jeepSqliteDefineCustomElements } from 'jeep-sqlite/loader';

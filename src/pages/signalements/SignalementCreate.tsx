@@ -16,11 +16,12 @@ import { signalementApi } from '../../services/signalementService';
 import type { ProprieteSimple } from '../../types/signalement';
 import { db, type PendingOperation } from '../../services/db';
 import localApi from '../../services/localApi';
-import { synchroniserSignalements, refilerPhotosEchouees } from '../../services/syncService';
+import { synchroniserSignalements, refilerPhotosEchouees, blobVersFichier } from '../../services/syncService';
 import { telechargerZone, type OfflineTileLayer } from '../../services/offlineMap';
 import { useOnline } from '../../hooks/useOnline';
 import { TYPES_SIGNALEMENT_DEFAUT, VILLES_DEFAUT } from '../../services/referentielsDefauts';
 import type { TypeSignalement, VilleSimple, SignalementRequest } from '../../types/signalement';
+import { composerDescriptionAvecProprieteManuelle, extraireProprieteManuelle } from '../../services/proprieteManuelle';
 
 interface PhotoAttachee {
   dataUrl: string;
@@ -277,14 +278,13 @@ export default function SignalementCreate() {
     setVilleId(payload.idVille);
     if (payload.dateSignalement) setDate(payload.dateSignalement.slice(0, 10));
     // La propriété en saisie manuelle est stockée en préfixe de la description.
-    const desc = payload.description || '';
-    const m = /^\[Propriété : (.+?)\]\s*/.exec(desc);
-    if (m) {
+    const { proprieteManuelle: pm, description: desc } = extraireProprieteManuelle(payload.description);
+    if (pm) {
       setModeSaisiePropriete('manuelle');
-      setProprieteManuelle(m[1]);
-      setDescription(desc.slice(m[0].length));
-    } else {
+      setProprieteManuelle(pm);
       setDescription(desc);
+    } else {
+      setDescription(payload.description || '');
     }
     if (payload.idPropriete) setIdProprieteSignalee(payload.idPropriete);
     appliquerGeometrie(payload.geometrie);
@@ -549,8 +549,10 @@ export default function SignalementCreate() {
     try {
       // La propriété choisie manuellement est tracée dans la description
       // (aucun idPropriete n'existe côté serveur pour une saisie libre).
+      // Le préfixe est partagé avec le web (utils/proprieteManuelle) qui l'affiche
+      // dans un encart dédié plutôt que dans l'observation brute.
       const descriptionFinale = modeSaisiePropriete === 'manuelle' && proprieteManuelle.trim()
-        ? `[Propriété : ${proprieteManuelle.trim()}] ${description.trim()}`
+        ? composerDescriptionAvecProprieteManuelle(proprieteManuelle, description)
         : description.trim();
 
       // Position GPS → géométrie GeoJSON (table `geometrie` côté serveur, table
@@ -609,6 +611,22 @@ export default function SignalementCreate() {
       const opEdition = modeEdition && idModification
         ? await db.trouverOperationPending(idModification).catch(() => null)
         : null;
+      // ⚠️ Garde-fou anti-écrasement : l'entité n'existe NI dans la file locale,
+      // NI côté serveur joignable (hors-ligne, chargement serveur en échec) → le
+      // formulaire est vide/partiel. Un UPDATE filé avec ce payload écraserait la
+      // description, la ville et la propriété du signalement serveur à la synchro
+      // (le backend réapplique tous les champs sans condition). On refuse
+      // l'enregistrement plutôt que de détruire des données.
+      if (
+        modeEdition && idModification && !opEdition &&
+        !(brouillonLocal && !opEdition) && (!online || !editionChargeeRef.current)
+      ) {
+        setToast(
+          'Modification impossible hors-ligne : ce signalement n\'est pas disponible sur cet appareil. Reconnectez-vous au serveur pour l\'éditer.'
+        );
+        setToastColor('danger');
+        return;
+      }
       // Cas limite : le brouillon vient d'être synchronisé (sync auto) pendant
       // l'édition → il n'a plus d'id local, on repasse sur la création classique.
       if (modeEdition && idModification && !(brouillonLocal && !opEdition)) {
@@ -664,7 +682,9 @@ export default function SignalementCreate() {
               try {
                 const form = new FormData();
                 const blob = dataUrlVersBlob(p.dataUrl);
-                form.append('fichier', blob, `signalement_${Date.now()}.png`);
+                // File nommée (et non Blob brut) : le pont natif CapacitorHttp
+                // n'envoie comme fichier que les valeurs instanceof File.
+                form.append('fichier', blobVersFichier(blob, `signalement_${Date.now()}.jpg`), `signalement_${Date.now()}.jpg`);
                 form.append('entiteType', 'signalement');
                 form.append('entiteId', id);
                 form.append('typePhoto', p.typePhoto || 'constat');
@@ -748,7 +768,9 @@ export default function SignalementCreate() {
             try {
               const form = new FormData();
               const blob = dataUrlVersBlob(p.dataUrl);
-              form.append('fichier', blob, `signalement_${Date.now()}.png`);
+              // File nommée (et non Blob brut) : le pont natif CapacitorHttp
+              // n'envoie comme fichier que les valeurs instanceof File.
+              form.append('fichier', blobVersFichier(blob, `signalement_${Date.now()}.jpg`), `signalement_${Date.now()}.jpg`);
               form.append('entiteType', 'signalement');
               form.append('entiteId', cree.idSignalement);
               form.append('typePhoto', p.typePhoto || 'constat');
@@ -804,9 +826,13 @@ export default function SignalementCreate() {
       setToastColor('success');
       setTimeout(() => history.replace('/tab/signalements'), 1500);
       void idLocal;
-    } catch (e) {
+    } catch (e: any) {
       console.error(e);
-      setToast('Erreur pendant l’enregistrement');
+      // Afficher la VRAIE cause (ex. « Erreur base locale (POST /signalements) : … »)
+      // : un toast générique rend tout échec d'enregistrement indéchiffrable sur
+      // le terrain (pas de DevTools sur l'appareil).
+      const detail = e?.message ? String(e.message) : 'erreur inconnue';
+      setToast(`Erreur pendant l’enregistrement — ${detail}`);
       setToastColor('danger');
     } finally {
       setSaving(false);
@@ -831,6 +857,10 @@ export default function SignalementCreate() {
         const res = await synchroniserSignalements();
         setToast(`${res.reussis}/${res.total} signalement(s) synchronisé(s)`);
         setToastColor(res.echecs === 0 ? 'success' : 'danger');
+      } catch (e) {
+        // Jamais de rejet non géré ici : sur le terrain (réseau instable), une
+        // erreur de synchro ne doit pas perturber l'écran de création.
+        console.warn('[SEIMAD:SignalementCreate] synchro auto ignorée', e);
       } finally {
         setSyncing(false);
         db.nombreOperationsPending().then(setPendingCount).catch(() => undefined);

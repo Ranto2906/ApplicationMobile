@@ -20,6 +20,37 @@ export default function Login() {
 
   const [debug, setDebug] = useState('');
 
+  /**
+   * Tente la connexion. Le flag « hors-ligne » n'est pas fiable : Android
+   * peut marquer un WiFi actif comme « sans Internet » (réseau local non
+   * validé) alors que le serveur du LAN est joignable. On essaie donc la
+   * session locale (rapide), puis on tente QUAND MÊME le serveur en cas
+   * d'échec — c'est lui qui décide, pas l'indicateur de connectivité.
+   */
+  const tenterConnexion = async () => {
+    if (!online) {
+      try {
+        setDebug('→ Flag « hors-ligne » : vérification locale des identifiants');
+        await loginHorsLigne({ nomUtilisateur, motDePasse });
+        return;
+      } catch (errLocal: any) {
+        // Pas de session locale exploitable : peut-être une fausse détection
+        // « hors-ligne » → on tente réellement le serveur avant de conclure.
+        setDebug('→ Aucune session locale utilisable : tentative de connexion au serveur…');
+        try {
+          await login({ nomUtilisateur, motDePasse });
+          return;
+        } catch (errServeur: any) {
+          // Serveur injoignable (pas de réponse HTTP) → l'erreur locale est la
+          // plus parlante ; sinon (401/403/500…) c'est l'erreur serveur qui compte.
+          if (!errServeur?.response) throw errLocal;
+          throw errServeur;
+        }
+      }
+    }
+    await login({ nomUtilisateur, motDePasse });
+  };
+
   const handleSubmit = async () => {
     setError('');
     setDebug('');
@@ -28,14 +59,7 @@ export default function Login() {
     setDebug(`→ ${url}`);
     console.log(`[SEIMAD:Login] submit → ${url} (depuis démarrage: ${Math.round(performance.now() - (window as any).__SEIMAD_DÉMARAGE__ || 0)}ms)`);
     try {
-      if (!online) {
-        // Hors-ligne : vérification locale (session enregistrée lors d'une
-        // précédente connexion en ligne).
-        setDebug('→ Mode hors-ligne : vérification locale des identifiants');
-        await loginHorsLigne({ nomUtilisateur, motDePasse });
-      } else {
-        await login({ nomUtilisateur, motDePasse });
-      }
+      await tenterConnexion();
       history.replace('/tab/dashboard');
     } catch (err: any) {
       const details = err?.response?.status
@@ -151,9 +175,7 @@ export default function Login() {
               </div>
             )}
 
-            <IonText className="login-demo">
-              <p>Compte démo : <strong>admin / admin</strong></p>
-            </IonText>
+           
 
             {debug && (
               <details className="login-debug">
