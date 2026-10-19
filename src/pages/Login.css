@@ -20,7 +20,7 @@
   gap: 10px;
   height: 60px;
   padding: 0 16px;
-  background: #1877f2;
+  background: var(--seimad-blue);
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
 }
 
@@ -99,7 +99,7 @@
 
 .login-field.item-has-focus,
 .login-field:focus-within {
-  border-color: #1877f2;
+  border-color: var(--seimad-blue);
   box-shadow: 0 0 0 2px #e7f3ff;
 }
 
@@ -138,9 +138,9 @@
 
 /* ---------- Bouton principal ---------- */
 .login-submit {
-  --background: #1877f2;
-  --background-activated: #166fe5;
-  --background-hover: #166fe5;
+  --background: var(--seimad-blue);
+  --background-activated: var(--seimad-blue-deep);
+  --background-hover: var(--seimad-blue-deep);
   --border-radius: 6px;
   --box-shadow: none;
   height: 48px;
@@ -206,7 +206,7 @@
 .login-offline ion-icon {
   flex: 0 0 auto;
   margin-top: 1px;
-  color: #1877f2;
+  color: var(--seimad-blue);
   font-size: 17px;
 }
 

@@ -239,7 +239,7 @@ export default function SignalementDetail() {
 
   const estLocal = !!pending;
   const statutCouleur = useMemo(
-    () => (estLocal ? '#b7791f' : (sig?.couleurStatutHex || '#176b87')),
+    () => (estLocal ? '#b7791f' : (sig?.couleurStatutHex || 'var(--seimad-blue)')),
     [estLocal, sig?.couleurStatutHex]
   );
 
@@ -266,7 +266,7 @@ export default function SignalementDetail() {
   return (
     <IonPage>
       <IonHeader>
-        <IonToolbar style={{ '--background': '#0d435d', '--color': 'white' }}>
+        <IonToolbar style={{ '--background': 'var(--seimad-blue)', '--color': 'white' }}>
           <IonButtons slot="start">
             <IonButton onClick={() => history.replace('/tab/signalements')}>
               <IonIcon icon={chevronBack} />
@@ -312,7 +312,7 @@ export default function SignalementDetail() {
                   {sig.libelleStatut || 'Nouveau'}
                 </IonBadge>
                 {majEnAttente && (
-                  <IonBadge style={{ background: '#176b87', color: '#fff', fontSize: 10.5 }}>
+                  <IonBadge style={{ background: 'var(--seimad-blue)', color: '#fff', fontSize: 10.5 }}>
                     ✏️ modifié localement
                   </IonBadge>
                 )}
@@ -321,7 +321,7 @@ export default function SignalementDetail() {
               {/* Type + ville + rattachements (badges colorés) */}
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 10 }}>
                 <span style={{
-                  background: sig.couleurType || '#176b87', color: '#fff', borderRadius: 999,
+                  background: sig.couleurType || 'var(--seimad-blue)', color: '#fff', borderRadius: 999,
                   padding: '3px 10px', fontSize: 11.5, fontWeight: 600,
                 }}>
                   {sig.libelleType || 'Signalement'}
@@ -383,7 +383,7 @@ export default function SignalementDetail() {
                 <div style={{ background: '#e2e8f0', borderRadius: 6, height: 5, marginTop: 4, overflow: 'hidden' }}>
                   <div style={{
                     width: dlProgress.total ? `${Math.round((dlProgress.fait / dlProgress.total) * 100)}%` : '0%',
-                    background: '#176b87', height: '100%',
+                    background: 'var(--seimad-blue)', height: '100%',
                   }} />
                 </div>
               </div>
@@ -540,7 +540,7 @@ export default function SignalementDetail() {
                 historique.map((h, i) => (
                   <div key={i} style={{ display: 'flex', gap: 10, padding: '8px 0', borderTop: '1px solid #f3f4f6', marginTop: i === 0 ? 4 : 0, fontSize: 12.5 }}>
                     <IonBadge style={{
-                      background: h.action === 'CREATE' ? '#059669' : h.action === 'UPDATE' ? '#176b87' : h.action === 'DELETE' ? '#dc2626' : '#6b7280',
+                      background: h.action === 'CREATE' ? '#059669' : h.action === 'UPDATE' ? 'var(--seimad-blue)' : h.action === 'DELETE' ? '#dc2626' : '#6b7280',
                       color: '#fff', fontSize: 9.5, minWidth: 60, textAlign: 'center',
                     }}>
                       {h.action || '—'}

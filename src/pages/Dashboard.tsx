@@ -19,7 +19,7 @@ import { descenteTerrainApi } from '../services/descenteTerrainService';
 import type { DescenteTerrainDTO } from '../types/descenteTerrain';
 
 const COULEURS_STATUT: Record<string, string> = {
-  nouveau: '#176b87', 'en attente': '#b7791f', 'en cours': '#176b87',
+  nouveau: 'var(--seimad-blue)', 'en attente': '#b7791f', 'en cours': 'var(--seimad-blue)',
   traite: '#059669', rejete: '#dc2626', transforme: '#7c3aed',
 };
 
@@ -222,7 +222,7 @@ export default function Dashboard() {
         <IonCard
           style={{
             margin: '12px 12px 0', borderRadius: 16,
-            background: 'linear-gradient(135deg, #0d435d, #176b87)',
+            background: 'linear-gradient(135deg, var(--seimad-blue), var(--seimad-blue-deep))',
             boxShadow: '0 4px 16px rgba(26,86,219,0.25)',
           }}
         >
@@ -253,7 +253,7 @@ export default function Dashboard() {
         {/* ── 2. Statistiques en temps réel ── */}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8, margin: '12px 12px 0' }}>
           {[
-            { icon: megaphone, valeur: chargement ? '…' : String(stats.signalements), label: 'Signalements', color: '#176b87' },
+            { icon: megaphone, valeur: chargement ? '…' : String(stats.signalements), label: 'Signalements', color: 'var(--seimad-blue)' },
             { icon: cameraOutline, valeur: chargement ? '…' : String(stats.photos), label: 'Photos', color: '#059669' },
             { icon: cloudOfflineOutline, valeur: chargement ? '…' : String(stats.enAttente), label: 'À synchroniser', color: '#b7791f' },
           ].map((s) => (
@@ -315,7 +315,7 @@ export default function Dashboard() {
           <IonButton
             size="small" fill="clear"
             onClick={() => history.push('/tab/signalements')}
-            style={{ '--color': '#176b87', fontSize: 12.5 }}
+            style={{ '--color': 'var(--seimad-blue)', fontSize: 12.5 }}
           >
             Tout voir <IonIcon icon={chevronForward} />
           </IonButton>

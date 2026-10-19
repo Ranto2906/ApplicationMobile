@@ -875,7 +875,7 @@ export default function SignalementCreate() {
   return (
     <IonPage>
       <IonHeader>
-        <IonToolbar style={{ '--background': '#0d435d', '--color': 'white' }}>
+        <IonToolbar style={{ '--background': 'var(--seimad-blue)', '--color': 'white' }}>
           <IonButtons slot="start">
             <IonButton onClick={annuler}>
               <IonIcon icon={chevronBack} />
@@ -1207,7 +1207,7 @@ export default function SignalementCreate() {
             <div style={{ background: '#e2e8f0', borderRadius: 6, height: 6, overflow: 'hidden' }}>
               <div style={{
                 width: downloadProgress.total > 0 ? `${Math.round((downloadProgress.fait / downloadProgress.total) * 100)}%` : '0%',
-                background: '#176b87', height: '100%', transition: 'width .3s',
+                background: 'var(--seimad-blue)', height: '100%', transition: 'width .3s',
               }} />
             </div>
           </div>
@@ -1237,7 +1237,7 @@ export default function SignalementCreate() {
           expand="block"
           disabled={saving || chargementEdition}
           onClick={enregistrer}
-          style={{ '--border-radius': 12, height: 50, fontWeight: 700, marginBottom: 30, '--background': '#176b87' }}
+          style={{ '--border-radius': 12, height: 50, fontWeight: 700, marginBottom: 30, '--background': 'var(--seimad-blue)' }}
         >
           {saving
             ? <IonSpinner name="crescent" />

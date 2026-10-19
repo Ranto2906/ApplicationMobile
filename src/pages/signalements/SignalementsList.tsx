@@ -14,7 +14,7 @@ import type { SignalementDTO, Page } from '../../types/signalement';
 import { extraireProprieteManuelle } from '../../services/proprieteManuelle';
 
 const COULEURS_STATUT: Record<string, string> = {
-  nouveau: '#176b87', 'en attente': '#b7791f', 'en cours': '#176b87',
+  nouveau: 'var(--seimad-blue)', 'en attente': '#b7791f', 'en cours': 'var(--seimad-blue)',
   traite: '#059669', rejete: '#dc2626', transforme: '#7c3aed',
 };
 
@@ -124,7 +124,7 @@ export default function SignalementsList() {
   return (
     <IonPage>
       <IonHeader>
-        <IonToolbar style={{ '--background': '#0d435d', '--color': 'white', '--min-height': online ? '56px' : '94px' }}>
+        <IonToolbar style={{ '--background': 'var(--seimad-blue)', '--color': 'white', '--min-height': online ? '56px' : '94px' }}>
           <IonTitle>🚨 Signalements</IonTitle>
           {!online && (
             <div style={{ fontSize: 12, padding: '4px 12px', textAlign: 'center', color: '#8a6d1d' }}>
@@ -279,7 +279,7 @@ export default function SignalementsList() {
         )}
 
         <IonFab vertical="bottom" horizontal="end" slot="fixed">
-          <IonFabButton onClick={() => history.push('/tab/signalements/nouveau')} style={{ '--background': '#176b87' }}>
+          <IonFabButton onClick={() => history.push('/tab/signalements/nouveau')} style={{ '--background': 'var(--seimad-blue)' }}>
             <IonIcon icon={add} />
           </IonFabButton>
         </IonFab>

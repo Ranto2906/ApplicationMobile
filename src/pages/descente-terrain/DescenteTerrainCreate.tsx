@@ -537,7 +537,7 @@ export default function DescenteTerrainCreate() {
   return (
     <IonPage>
       <IonHeader>
-        <IonToolbar style={{ '--background': '#0d435d', '--color': 'white' }}>
+        <IonToolbar style={{ '--background': 'var(--seimad-blue)', '--color': 'white' }}>
           <IonButtons slot="start">
             <IonButton onClick={() => history.replace(
               modeEdition && idModification ? `/tab/descente-terrain/${idModification}` : '/tab/descente-terrain'
@@ -831,7 +831,7 @@ export default function DescenteTerrainCreate() {
           expand="block"
           disabled={saving || chargementEdition}
           onClick={enregistrer}
-          style={{ '--border-radius': 12, height: 50, fontWeight: 700, marginTop: 24, marginBottom: 30, '--background': '#176b87' }}
+          style={{ '--border-radius': 12, height: 50, fontWeight: 700, marginTop: 24, marginBottom: 30, '--background': 'var(--seimad-blue)' }}
         >
           {saving
             ? <IonSpinner name="crescent" />

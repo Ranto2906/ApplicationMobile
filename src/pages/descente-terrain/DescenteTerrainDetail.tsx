@@ -19,7 +19,7 @@ const COULEURS_STATUT: Record<string, string> = {
 };
 
 const COULEURS_VALIDATION: Record<string, string> = {
-  'en attente': '#b7791f', valide: '#059669', rejete: '#dc2626', 'complement demande': '#8b5cf6',
+  'bon pour la suite': '#059669', 'en instance': '#f59e0b',
 };
 
 export default function DescenteTerrainDetail() {
@@ -211,7 +211,7 @@ export default function DescenteTerrainDetail() {
   return (
     <IonPage>
       <IonHeader>
-        <IonToolbar style={{ '--background': '#0d435d', '--color': 'white' }}>
+        <IonToolbar style={{ '--background': 'var(--seimad-blue)', '--color': 'white' }}>
           <IonButtons slot="start">
             <IonButton onClick={() => history.replace('/tab/descente-terrain')}>
               <IonIcon icon={chevronBack} />
@@ -260,7 +260,7 @@ export default function DescenteTerrainDetail() {
                   {dt.validation}
                 </IonBadge>
                 {majEnAttente && (
-                  <IonBadge style={{ background: '#176b87', color: '#fff', fontSize: 10.5 }}>
+                  <IonBadge style={{ background: 'var(--seimad-blue)', color: '#fff', fontSize: 10.5 }}>
                     ✏️ modifié localement
                   </IonBadge>
                 )}

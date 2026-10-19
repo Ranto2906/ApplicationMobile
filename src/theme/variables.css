@@ -5,8 +5,8 @@
 :root {
   --seimad-ink: #102a43;
   --seimad-muted: #64748b;
-  --seimad-blue: #176b87;
-  --seimad-blue-deep: #0d435d;
+  --seimad-blue: #1877f2;
+  --seimad-blue-deep: #166fe5;
   --seimad-teal: #1a8a91;
   --seimad-surface: #ffffff;
   --seimad-canvas: #f4f8fa;
@@ -15,12 +15,12 @@
   --seimad-shadow: 0 10px 28px rgba(16, 42, 67, 0.08);
 
   /* Couleur primaire SEIMAD */
-  --ion-color-primary: #176b87;
-  --ion-color-primary-rgb: 23, 107, 135;
+  --ion-color-primary: #1877f2;
+  --ion-color-primary-rgb: 24, 119, 242;
   --ion-color-primary-contrast: #ffffff;
   --ion-color-primary-contrast-rgb: 255, 255, 255;
-  --ion-color-primary-shade: #145e77;
-  --ion-color-primary-tint: #2f7b95;
+  --ion-color-primary-shade: #166fe5;
+  --ion-color-primary-tint: #3b8df3;
 
   --ion-color-secondary: #1a8a91;
   --ion-color-secondary-rgb: 26, 138, 145;

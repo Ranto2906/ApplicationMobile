@@ -9,10 +9,8 @@ export type StatutConstat =
   | 'Construction illegale';
 
 export type StatutValidation =
-  | 'En attente'
-  | 'Valide'
-  | 'Rejete'
-  | 'Complement demande';
+  | 'Bon pour la suite'
+  | 'En instance';
 
 export type ModeDescente = 'online' | 'offline';
 

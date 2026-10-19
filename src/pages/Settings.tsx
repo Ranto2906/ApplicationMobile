@@ -103,7 +103,7 @@ export default function Settings() {
   return (
     <IonPage>
       <IonHeader>
-          <IonToolbar style={{ '--background': '#0d435d', '--color': 'white' }}>
+          <IonToolbar style={{ '--background': 'var(--seimad-blue)', '--color': 'white' }}>
           <IonTitle>👤 Mon profil</IonTitle>
         </IonToolbar>
       </IonHeader>
@@ -114,7 +114,7 @@ export default function Settings() {
           <div style={{
             width: 72, height: 72, borderRadius: '50%', background: '#dbeafe',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
-            margin: '0 auto 12px', fontSize: 28, fontWeight: 'bold', color: '#176b87',
+            margin: '0 auto 12px', fontSize: 28, fontWeight: 'bold', color: 'var(--seimad-blue)',
           }}>
             {user?.nomUtilisateur?.charAt(0).toUpperCase()}
           </div>
@@ -200,7 +200,7 @@ export default function Settings() {
               expand="block"
               disabled={syncing || !online}
               onClick={synchroniser}
-              style={{ '--border-radius': 10, '--background': '#176b87' }}
+              style={{ '--border-radius': 10, '--background': 'var(--seimad-blue)' }}
             >
               {syncing ? <IonSpinner name="crescent" /> : <IonIcon icon={syncOutline} slot="start" />}
               {syncing ? 'Synchronisation en cours…' : 'Synchroniser maintenant'}

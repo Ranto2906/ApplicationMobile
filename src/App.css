@@ -106,7 +106,7 @@ ion-badge {
 .fab-custom {
   --background: var(--seimad-blue);
   --color: white;
-  --box-shadow: 0 8px 18px rgba(23, 107, 135, 0.25);
+  --box-shadow: 0 8px 18px rgba(16, 24, 40, 0.25);
 }
 
 .page-section-title {

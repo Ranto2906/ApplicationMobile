@@ -65,7 +65,7 @@ export default function Journal() {
   return (
     <IonPage>
       <IonHeader>
-        <IonToolbar style={{ '--background': '#0d435d', '--color': 'white' }}>
+        <IonToolbar style={{ '--background': 'var(--seimad-blue)', '--color': 'white' }}>
           <IonTitle>📋 Journal</IonTitle>
         </IonToolbar>
         <IonToolbar>

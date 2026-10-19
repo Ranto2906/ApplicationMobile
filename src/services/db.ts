@@ -243,17 +243,34 @@ class DatabaseService {
     }
 
     console.log(`[SEIMAD:db] doInit → ouverture connexion`, DB_NAME);
-    // NB : `isConnection` renvoie { result: boolean } (capSQLiteResult), pas un
-    // booléen brut — tester l'objet directement aurait toujours pris la branche
-    // « retrieveConnection » et échoué avec « Connection … does not exist ».
-    const connexionExistante = (await this.sqlite.isConnection(DB_NAME, false)).result;
-    if (!connexionExistante) {
-      this.db = await this.sqlite.createConnection(DB_NAME, false, 'no-encryption', DB_VERSION, false);
-      console.log(`[SEIMAD:db] doInit → connexion créée`);
-    } else {
-      this.db = await this.sqlite.retrieveConnection(DB_NAME, false);
-      console.log(`[SEIMAD:db] doInit → connexion récupérée (existante)`);
-    }
+    // ⚠️ Divergence d'état JS ↔ natif : après un rechargement du WebView
+    // (bouton « Redémarrer », reprise de l'app en arrière-plan), la connexion
+    // peut exister côté plugin natif alors que `isConnection` répond
+    // « inexistante » — `createConnection` rejetait alors avec
+    // « connection seimad_offline already exists » et TOUTE écriture locale
+    // échouait (création signalement/descente hors-ligne impossible, message
+    // « Erreur base locale (POST /descentes-terrain) »).
+    // Stratégie résiliente : createConnection d'abord ; si « already exists »
+    // → retrieveConnection ; si l'état reste incohérent → closeConnection
+    // explicite puis re-création.
+    const ouvrirConnexion = async (): Promise<SQLiteDBConnection> => {
+      try {
+        return await this.sqlite.createConnection(DB_NAME, false, 'no-encryption', DB_VERSION, false);
+      } catch (e: any) {
+        const msg = String(e?.message || e);
+        if (!/already\s*exists/i.test(msg)) throw e;
+        console.warn(`[SEIMAD:db] connexion ${DB_NAME} déjà présente côté natif → retrieveConnection`);
+        try {
+          return await this.sqlite.retrieveConnection(DB_NAME, false);
+        } catch {
+          console.warn(`[SEIMAD:db] retrieveConnection échoué → closeConnection + re-création`);
+          await this.sqlite.closeConnection(DB_NAME, false).catch(() => undefined);
+          return await this.sqlite.createConnection(DB_NAME, false, 'no-encryption', DB_VERSION, false);
+        }
+      }
+    };
+    this.db = await ouvrirConnexion();
+    console.log(`[SEIMAD:db] doInit → connexion ouverte`);
 
     await this.db.open();
     console.log(`[SEIMAD:db] doInit → db.open ok`);

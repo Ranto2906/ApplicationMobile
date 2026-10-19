@@ -2,14 +2,14 @@ import { lazy, Suspense } from 'react';
 import { IonTabs, IonTabBar, IonTabButton, IonIcon, IonLabel, IonRouterOutlet, IonSpinner } from '@ionic/react';
 import { Route, Redirect } from 'react-router-dom';
 import { home, megaphone, clipboardOutline, settings } from 'ionicons/icons';
+import DescenteTerrainList from '../pages/descente-terrain/DescenteTerrainList';
+import DescenteTerrainCreate from '../pages/descente-terrain/DescenteTerrainCreate';
+import DescenteTerrainDetail from '../pages/descente-terrain/DescenteTerrainDetail';
 
 const Dashboard = lazy(() => import('../pages/Dashboard'));
 const SignalementsList = lazy(() => import('../pages/signalements/SignalementsList'));
 const SignalementCreate = lazy(() => import('../pages/signalements/SignalementCreate'));
 const SignalementDetail = lazy(() => import('../pages/signalements/SignalementDetail'));
-const DescenteTerrainList = lazy(() => import('../pages/descente-terrain/DescenteTerrainList'));
-const DescenteTerrainCreate = lazy(() => import('../pages/descente-terrain/DescenteTerrainCreate'));
-const DescenteTerrainDetail = lazy(() => import('../pages/descente-terrain/DescenteTerrainDetail'));
 const Settings = lazy(() => import('../pages/Settings'));
 
 function TabLoader() {

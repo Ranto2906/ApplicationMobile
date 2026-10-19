@@ -36,7 +36,7 @@ interface SearchResult {
 }
 
 /** Icône en forme de goutte — évite les assets Leaflet par défaut (fragiles en bundle). */
-function pinIcon(color = '#1a56db') {
+function pinIcon(color = '#1877f2') {
   return L.divIcon({
     className: '',
     iconSize: [34, 44],
@@ -263,7 +263,7 @@ export default function LeafletOfflineMap({
               disabled={searching || !searchText.trim()}
               style={{
                 height: 40, border: 0, borderRadius: 9, padding: '0 13px', color: 'white',
-                background: '#176b87', fontWeight: 700, cursor: 'pointer',
+                background: 'var(--seimad-blue)', fontWeight: 700, cursor: 'pointer',
               }}
             >
               {searching ? '…' : 'Rechercher'}

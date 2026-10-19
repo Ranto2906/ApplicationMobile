@@ -48,7 +48,7 @@ class ErrorBoundary extends Component<{ children: ReactNode }, ErrorBoundaryStat
         <button
           type="button"
           onClick={() => window.location.reload()}
-          style={{ alignSelf: 'flex-start', padding: '10px 16px', border: 0, borderRadius: 8, background: '#176b87', color: 'white' }}
+          style={{ alignSelf: 'flex-start', padding: '10px 16px', border: 0, borderRadius: 8, background: 'var(--seimad-blue)', color: 'white' }}
         >
           Redémarrer
         </button>

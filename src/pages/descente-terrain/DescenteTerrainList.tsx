@@ -44,6 +44,12 @@ export default function DescenteTerrainList() {
 
   const charger = useCallback(async () => {
     setLoading(true);
+    if (!online) {
+      setItems([]);
+      setPage(null);
+      setLoading(false);
+      return;
+    }
     try {
       const data = search.trim()
         ? await descenteTerrainApi.rechercher(search.trim(), currentPage, 25)
@@ -56,7 +62,7 @@ export default function DescenteTerrainList() {
     } finally {
       setLoading(false);
     }
-  }, [search, currentPage]);
+  }, [online, search, currentPage]);
 
   useEffect(() => { charger(); }, [charger]);
 
@@ -121,7 +127,7 @@ export default function DescenteTerrainList() {
   return (
     <IonPage>
       <IonHeader>
-        <IonToolbar style={{ '--background': '#0d435d', '--color': 'white', '--min-height': online ? '56px' : '94px' }}>
+        <IonToolbar style={{ '--background': 'var(--seimad-blue)', '--color': 'white', '--min-height': online ? '56px' : '94px' }}>
           <IonTitle>📋 Descente terrain</IonTitle>
           {!online && (
             <div style={{ fontSize: 12, padding: '4px 12px', textAlign: 'center', color: '#8a6d1d' }}>
@@ -255,7 +261,7 @@ export default function DescenteTerrainList() {
         )}
 
         <IonFab vertical="bottom" horizontal="end" slot="fixed">
-          <IonFabButton onClick={() => history.push('/tab/descente-terrain/nouveau')} style={{ '--background': '#176b87' }}>
+          <IonFabButton onClick={() => history.push('/tab/descente-terrain/nouveau')} style={{ '--background': 'var(--seimad-blue)' }}>
             <IonIcon icon={add} />
           </IonFabButton>
         </IonFab>
