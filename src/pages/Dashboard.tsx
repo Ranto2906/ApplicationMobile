@@ -35,11 +35,9 @@ function formaterDate(d?: string): string {
 }
 
 const COULEURS_DESCENTE: Record<string, string> = {
-  conforme: '#059669',
-  'non conforme': '#dc2626',
-  'en attente': '#b7791f',
-  'occupation illicite': '#c53030',
-  'construction illegale': '#7c3aed',
+  faisable: '#059669',
+  'non faisable': '#dc2626',
+  'sous réserve': '#b7791f',
 };
 
 function couleurDescente(statut?: string): string {

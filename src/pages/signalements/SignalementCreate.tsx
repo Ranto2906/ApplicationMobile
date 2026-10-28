@@ -120,7 +120,10 @@ export default function SignalementCreate() {
         try {
           if (sqliteOk) {
             const [ct, cv] = await Promise.all([
-              avecTimeout(db.lireReferentiel('types_signalement'), 3000, null),
+              // Clé versionnée : le référentiel V39 (Construction / Clôture /
+              // Terrain cultivé) ne doit jamais être servi depuis l'ancien
+              // cache « types_signalement » (Occupation / Autre constat).
+              avecTimeout(db.lireReferentiel('types_signalement_v2'), 3000, null),
               avecTimeout(db.lireReferentiel('villes'), 3000, null),
             ]);
             t = ct ? (JSON.parse(ct) as TypeSignalement[]) : [];
@@ -154,7 +157,7 @@ export default function SignalementCreate() {
         // persistées). Seule l'instance d'effet encore active écrit.
         if (actif && sqliteOk) {
           await Promise.all([
-            db.sauverReferentiel('types_signalement', JSON.stringify(t)).catch(() => undefined),
+            db.sauverReferentiel('types_signalement_v2', JSON.stringify(t)).catch(() => undefined),
             db.sauverReferentiel('villes', JSON.stringify(v)).catch(() => undefined),
           ]);
         }

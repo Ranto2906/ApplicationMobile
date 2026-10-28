@@ -13,14 +13,34 @@ import { isNativePlatform } from '../../platform';
 import localApi from '../../services/localApi';
 import { synchroniserSignalements, refilerPhotosEchouees, blobVersFichier } from '../../services/syncService';
 import { useOnline } from '../../hooks/useOnline';
+import { STATUTS_CONSTAT_DEFAUT } from '../../services/referentielsDefauts';
 import type {
   DossierSearchResult, StatutConstat, DescenteTerrainRequest, ParcelleSnapshot,
   DescenteTerrainDTO,
 } from '../../types/descenteTerrain';
 
-const STATUTS_CONSTAT: StatutConstat[] = [
-  'Conforme', 'Non conforme', 'En attente', 'Occupation illicite', 'Construction illegale',
-];
+// Référentiel V38 — copie embarquée : la liste existe SANS réseau dès le
+// 1er lancement (grainée aussi dans le cache SQLite `constats_descente`).
+const STATUTS_CONSTAT: StatutConstat[] = STATUTS_CONSTAT_DEFAUT;
+
+/**
+ * Anciens constats (référentiel antérieur à V38) encore présents dans les
+ * brouillons locaux non synchronisés → ramenés au nouveau référentiel
+ * pour ne jamais renvoyer une valeur retirée au serveur.
+ */
+const ANCIENS_CONSTATS: Record<string, StatutConstat> = {
+  conforme: 'Faisable',
+  'en attente': 'Faisable',
+  'non conforme': 'Non faisable',
+  'occupation illicite': 'Non faisable',
+  'construction illegale': 'Non faisable',
+};
+
+function normaliserConstat(valeur?: string): StatutConstat | null {
+  if (!valeur) return null;
+  if ((STATUTS_CONSTAT as string[]).includes(valeur)) return valeur as StatutConstat;
+  return ANCIENS_CONSTATS[valeur.toLowerCase()] ?? null;
+}
 
 /** Une parcelle saisie/attachée dans le formulaire (texte libre en hors-ligne). */
 interface ParcelleForm {
@@ -60,7 +80,7 @@ export default function DescenteTerrainCreate() {
 
   // Formulaire
   const [dateDescente, setDateDescente] = useState(() => new Date().toISOString().slice(0, 10));
-  const [statutConstat, setStatutConstat] = useState<StatutConstat>('En attente');
+  const [statutConstat, setStatutConstat] = useState<StatutConstat>('Faisable');
   const [observation, setObservation] = useState('');
   const [photos, setPhotos] = useState<Array<{ dataUrl: string; nom: string; typePhoto?: string; datePrise?: string }>>([]);
 
@@ -112,7 +132,8 @@ export default function DescenteTerrainCreate() {
   /** Pré-remplit le formulaire depuis un payload (brouillon / UPDATE en file). */
   const appliquerPayload = useCallback((payload: DescenteTerrainRequest) => {
     if (payload.dateDescente) setDateDescente(payload.dateDescente.slice(0, 10));
-    if (payload.statutConstat) setStatutConstat(payload.statutConstat);
+    const constat = normaliserConstat(payload.statutConstat);
+    if (constat) setStatutConstat(constat);
     setObservation(payload.observation || '');
     if (payload.mode) setMode(payload.mode);
     setDossierNumero(payload.dossierNumero || '');
@@ -130,7 +151,8 @@ export default function DescenteTerrainCreate() {
   /** Pré-remplit le formulaire depuis le DTO serveur (snapshot = relations dossier). */
   const appliquerDto = useCallback((d: DescenteTerrainDTO) => {
     if (d.dateDescente) setDateDescente(d.dateDescente.slice(0, 10));
-    if (d.statutConstat && STATUTS_CONSTAT.includes(d.statutConstat)) setStatutConstat(d.statutConstat);
+    const constat = normaliserConstat(d.statutConstat);
+    if (constat) setStatutConstat(constat);
     setObservation(d.observation || '');
     if (d.mode) setMode(d.mode);
     setDossierNumero(d.numeroDossier || '');

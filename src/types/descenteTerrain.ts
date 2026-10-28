@@ -1,12 +1,13 @@
 // ── Descente Terrain (mobile terrain) — miroir du DTO Spring Boot ──
 import type { Page } from './signalement';
 
+// Référentiel V38 : Faisable / Non faisable / Sous réserve
+// (les anciens constats Conforme, Non conforme, En attente,
+// Occupation illicite, Construction illegale sont retirés).
 export type StatutConstat =
-  | 'Conforme'
-  | 'Non conforme'
-  | 'En attente'
-  | 'Occupation illicite'
-  | 'Construction illegale';
+  | 'Faisable'
+  | 'Non faisable'
+  | 'Sous réserve';
 
 export type StatutValidation =
   | 'Bon pour la suite'

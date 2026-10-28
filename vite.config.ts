@@ -8,7 +8,9 @@ export default defineConfig({
     port: 5174,
     proxy: {
       '/api': {
-        target: 'http://192.168.137.32:8093',
+        // Cible surridable : API_PROXY_TARGET=http://127.0.0.1:8094 pour
+        // tester contre un backend local, sans toucher au backend LAN.
+        target: process.env.API_PROXY_TARGET || 'http://192.168.0.46:8093',
         changeOrigin: true,
       },
     },

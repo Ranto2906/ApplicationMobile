@@ -14,8 +14,7 @@ import type { DescenteTerrainDTO } from '../../types/descenteTerrain';
 interface RouteParams { id: string }
 
 const COULEURS_STATUT: Record<string, string> = {
-  conforme: '#059669', 'non conforme': '#dc2626', 'en attente': '#b7791f',
-  'occupation illicite': '#c53030', 'construction illegale': '#7c3aed',
+  faisable: '#059669', 'non faisable': '#dc2626', 'sous réserve': '#b7791f',
 };
 
 const COULEURS_VALIDATION: Record<string, string> = {
@@ -58,7 +57,7 @@ export default function DescenteTerrainDetail() {
       }
       setPending(null);
       setMajEnAttente(null);
-      // Une création encore en file est un brouillon ; une modification en attente
+      // Une création encore en file est un brouillon ; une modification En instance
       // (UPDATE) se cumule avec les données serveur.
       const estBrouillon = !!p && p.action === 'CREATE' && p.entiteType === 'descente_terrain';
       const opMaj = p && p.action === 'UPDATE' && p.entiteType === 'descente_terrain' ? p : null;
@@ -69,10 +68,10 @@ export default function DescenteTerrainDetail() {
           idDescente: p.idLocal,
           reference: 'Brouillon local',
           dateDescente: payload.dateDescente,
-          statutConstat: payload.statutConstat || 'En attente',
+          statutConstat: payload.statutConstat || 'Faisable',
           observation: payload.observation,
           mode: payload.mode || 'offline',
-          validation: 'En attente',
+          validation: 'En instance',
           idPersonne: payload.idPersonne,
           idDossierParcelle: payload.idDossierParcelle,
           demandeurNom: payload.demandeurNom,
@@ -109,10 +108,10 @@ export default function DescenteTerrainDetail() {
           idDescente: id,
           reference: 'Modification locale',
           dateDescente: payload.dateDescente || opMaj.createdAt,
-          statutConstat: payload.statutConstat || 'En attente',
+          statutConstat: payload.statutConstat || 'Faisable',
           observation: payload.observation,
           mode: payload.mode || 'offline',
-          validation: 'En attente',
+          validation: 'En instance',
           demandeurNom: payload.demandeurNom,
           dossierNumero: payload.dossierNumero,
           synchronise: 0,
@@ -364,7 +363,7 @@ export default function DescenteTerrainDetail() {
               )}
             </div>
 
-            {/* Brouillon local / modification en attente → bouton sync */}
+            {/* Brouillon local / modification En instance → bouton sync */}
             {(estLocal || majEnAttente) && (
               <IonButton expand="block" onClick={synchroniserUn} disabled={syncing || !online}
                 style={{ '--border-radius': 12, marginBottom: 10 }}>

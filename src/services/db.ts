@@ -16,6 +16,26 @@ import {
   SQLiteDBConnection,
 } from '@capacitor-community/sqlite';
 import type { UtilisateurDTO } from '../types';
+import {
+  TYPES_SIGNALEMENT_DEFAUT,
+  VILLES_DEFAUT,
+  STATUTS_CONSTAT_DEFAUT,
+  STATUTS_VALIDATION_DEFAUT,
+} from './referentielsDefauts';
+
+/**
+ * Référentiels embarqués → repli HORS-LIGNE garanti.
+ * Ils sont gravés dans `referentiels_cache` dès le 1er lancement (si la clé
+ * est absente) : types de signalement (V39), constats de descente (V38),
+ * validation (V34) et villes — les formulaires restent utilisables sans
+ * réseau, même sur un appareil qui n'a JAMAIS vu le serveur.
+ */
+const REFERENTIELS_EMBARQUES: Record<string, unknown[]> = {
+  types_signalement_v2: TYPES_SIGNALEMENT_DEFAUT,
+  villes: VILLES_DEFAUT,
+  constats_descente: STATUTS_CONSTAT_DEFAUT,
+  validations_descente: STATUTS_VALIDATION_DEFAUT,
+};
 
 const DB_NAME = 'seimad_offline';
 const DB_VERSION = 1;
@@ -335,6 +355,10 @@ class DatabaseService {
     // `geometrie_locale` (GeoJSON + drapeau de synchronisation).
     await this.migrerPositionsVersGeometrie();
     console.log(`[SEIMAD:db] doInit → création des tables métier ok`);
+
+    // Référentiels gravés dès le 1er lancement : les listes existent sans réseau
+    // (et sans jamais avoir ouvert le formulaire en ligne).
+    await this.grainerReferentiels();
     console.log(`[SEIMAD:db] doInit → terminé (web SQLite OK)`);
 
     // Persister tôt pour éviter une perte en cas de fermeture entre-temps.
@@ -651,20 +675,51 @@ class DatabaseService {
     });
   }
 
+  /**
+   * Grave les référentiels embarqués SEULEMENT s'ils sont absents : une copie
+   * fraîche récupérée en ligne n'est jamais écrasée par l'exemplaire embarqué.
+   */
+  private async grainerReferentiels(): Promise<void> {
+    try {
+      // Écritures DIRECTES (pas via enqueueEcriture) : doInit peut être appelé
+      // depuis une opération déjà en file — s'y ré-enfiler attendrait la fin de
+      // l'opération en cours, c'est-à-dire un blocage mutuel.
+      const db = this.db;
+      if (!db) return;
+      for (const [cle, valeurs] of Object.entries(REFERENTIELS_EMBARQUES)) {
+        const existant = await db.query('SELECT 1 FROM referentiels_cache WHERE cle = ?', [cle]);
+        if (existant.values && existant.values.length > 0) continue;
+        await db.run(
+          'INSERT OR IGNORE INTO referentiels_cache (cle, valeur, saved_at) VALUES (?, ?, ?)',
+          [cle, JSON.stringify(valeurs), new Date().toISOString()]
+        );
+      }
+      await this.saveToStore();
+      console.log(`[SEIMAD:db] doInit → référentiels embarqués disponibles hors-ligne`);
+    } catch (e: any) {
+      // L'appelant (formulaire) applique de toute façon son repli embarqué.
+      console.warn('[SEIMAD:db] grainerReferentiels → ignoré', e?.message || e);
+    }
+  }
+
   async lireReferentiel(cle: string): Promise<string | null> {
     // Résilient comme getMeta : sur le terrain (rechargement hors-ligne, base
     // pas encore initialisée), une exception ici faisait planter le remplissage
     // des listes types/villes du formulaire — le formulaire restait bloqué sur
-    // « Chargement… » avec des listes vides. On renvoie null → l'appelant peut
-    // appliquer son repli (cache embarqué).
+    // « Chargement… » avec des listes vides. On passe alors au repli EMBARQUÉ :
+    // la liste n'est jamais vide, même sans réseau.
     try {
       const db = await this.getDb();
       const r = await db.query('SELECT valeur FROM referentiels_cache WHERE cle = ?', [cle]);
-      return r.values && r.values.length > 0 ? String((r.values[0] as any).valeur) : null;
+      if (r.values && r.values.length > 0) return String((r.values[0] as any).valeur);
     } catch (e: any) {
       console.warn(`[SEIMAD:db] lireReferentiel → repli (base non prête) pour cle=${cle}`, e?.message || e);
-      return null;
     }
+    const embarque = REFERENTIELS_EMBARQUES[cle];
+    // Pas d'écriture ici : la gravure est déjà faite à l'init (grainerReferentiels)
+    // et l'appelant est éventuellement DANS la file d'écriture — on renvoie
+    // simplement la copie embarquée pour que la liste ne soit jamais vide.
+    return embarque ? JSON.stringify(embarque) : null;
   }
 
   // ── File générique d'opérations hors-ligne (poussée à la synchro) ──
